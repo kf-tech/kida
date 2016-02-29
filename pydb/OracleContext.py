@@ -4,6 +4,10 @@ from PyDB import DbContext
 from fields import IntField, StringField, DatetimeField, DateField, DecimalField, BinaryField
 from DbContext import Dialect
 import logging
+import datetime
+
+import os 
+os.environ["NLS_LANG"] = ".UTF8"
 
 class OracleContext(DbContext):
     '''
@@ -11,14 +15,18 @@ class OracleContext(DbContext):
     '''
     
 
-    def __init__(self, conn_str):
+    def __init__(self, user, password, host, port=1521, sid=None, service_name=None, **kwargs):
         '''
         Constructor
         '''
         import cx_Oracle
         self._metadata = {}
         self.dialect = OracleDialect()
-        self._context = cx_Oracle.connect(conn_str)
+        if sid:
+            dsn = cx_Oracle.makedsn(host, port, sid=sid)
+        else:
+            dsn = cx_Oracle.makedsn(host, port, service_name=service_name)
+        self._context = cx_Oracle.connect(user = user, password = password, dsn=dsn)
         self._cursor = self._context.cursor()
         
     def execute_sql(self, sql, params=None):
@@ -167,6 +175,23 @@ class OracleContext(DbContext):
             return None
         return ret    
     
+    def exists_key(self, tablename, keys):
+        sql = 'select count(*)'
+        table_metadata = self._metadata[tablename]
+        sql += ' from ' + tablename + ''
+        key_fields = filter(lambda x: x.is_key, table_metadata.values())
+        
+        if keys is not None:
+            key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, keys[key.name])) if keys[key.name] else ' %s is null ' % (key.name,) for key in key_fields])
+            sql += ' where ' + key_condition
+        
+        logging.debug(sql)
+        cursor = self.execute_sql(sql)
+        ret = cursor.fetchone()
+        if ret[0] > 0:
+            return True
+        return False
+    
     def update(self, tablename, data):
         table_metadata = self._metadata[tablename]
         key_fields = []
@@ -192,5 +217,20 @@ class OracleContext(DbContext):
         self._context.commit()
     
 class OracleDialect(Dialect):
-    pass
+    def format_value_string(self, field, value):
+        if isinstance(field, StringField):
+            return '\'' + value.replace('\'', '\'\'') + '\'' 
+        if isinstance(field, DatetimeField):
+            if isinstance(value, datetime.datetime):
+                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+            if isinstance(value, datetime.date):
+                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+            return "TO_DATE(\'" + str(value) + "\', 'yyyy/mm/dd hh24:mi:ss')"
+        if isinstance(field, DateField):
+            if isinstance(value, datetime.datetime):
+                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+            if isinstance(value, datetime.date):
+                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+            return "TO_DATE(\'" + str(value) + "\', 'yyyy/mm/dd hh24:mi:ss')"
+        return str(value)
         

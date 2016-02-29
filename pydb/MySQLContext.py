@@ -3,10 +3,9 @@
 from PyDB import DbContext
 from PyDB.fields import IntField, StringField, DatetimeField, DateField, DecimalField, BinaryField
 from DbContext import Dialect
-from mysql.connector.errors import OperationalError
 import logging
 import collections
-from _mysql_exceptions import ProgrammingError
+from _mysql_exceptions import ProgrammingError, OperationalError 
 
 class MySQLContext(DbContext):
     '''
@@ -17,7 +16,6 @@ class MySQLContext(DbContext):
         '''
         Constructor
         '''
-        #import mysql.connector  
         import MySQLdb      
         self._metadata = {}
         self.cnx = MySQLdb.connect(**conn_str)
@@ -25,17 +23,18 @@ class MySQLContext(DbContext):
         self.dialect = MySQLDialect()
     
     def execute_sql(self, sql, params=None):
+        logging.debug(sql)
         try:
             cursor = self.cursor
             cursor.execute(sql, params)
             return cursor
         except OperationalError:
-            if not self.cnx.is_connected():
-                self.cnx.connect()
-                cursor = self.cursor = self.cnx.cursor()
-                cursor.execute(sql, params)
-                logging.debug("connection reconnected")
-                return cursor
+            # if not self.cnx.is_connected():
+                # self.cnx.connect()
+                # cursor = self.cursor = self.cnx.cursor()
+                # cursor.execute(sql, params)
+                # logging.debug("connection reconnected")
+                # return cursor
             raise
     
     

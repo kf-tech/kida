@@ -1,7 +1,7 @@
 '''
 
 '''
-from PyDB.fields import IntField, StringField, DatetimeField
+from PyDB.fields import IntField, StringField, DatetimeField, DateField
 import datetime
 
 
@@ -42,6 +42,12 @@ class Dialect:
         if isinstance(field, StringField):
             return '\'' + value.replace('\'', '\'\'') + '\'' 
         if isinstance(field, DatetimeField):
+            if isinstance(value, datetime.datetime):
+                return "'" + value.strftime('%Y-%m-%d %H:%M:%S') + "'"
+            if isinstance(value, datetime.date):
+                return "'" + value.strftime('%Y-%m-%d %H:%M:%S') + "'"
+            return '\'' + str(value) + '\''
+        if isinstance(field, DateField):
             if isinstance(value, datetime.datetime):
                 return "'" + value.strftime('%Y-%m-%d %H:%M:%S') + "'"
             if isinstance(value, datetime.date):
