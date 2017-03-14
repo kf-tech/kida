@@ -4,6 +4,8 @@
 from PyDB.fields import IntField, StringField, DatetimeField, DateField
 import datetime
 
+def create_context(url):
+
 
 class DbContext(object):
     '''

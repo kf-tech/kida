@@ -9,6 +9,9 @@ import datetime
 import os 
 os.environ["NLS_LANG"] = ".UTF8"
 
+logger = logging.getLogger('PyDB')
+
+
 class OracleContext(DbContext):
     '''
     classdocs
@@ -28,21 +31,13 @@ class OracleContext(DbContext):
             dsn = cx_Oracle.makedsn(host, port, service_name=service_name)
         self._context = cx_Oracle.connect(user = user, password = password, dsn=dsn)
         self._cursor = self._context.cursor()
+        self._cursor.execute("ALTER SESSION  SET NLS_DATE_FORMAT='YYYY-MM-DD'")
         
     def execute_sql(self, sql, params=None):
-#         try:
         cursor = self._cursor
         params = params or {}
         cursor.execute(sql, params)
         return cursor
-#         except mysql.connector.OperationalError:
-#             if not self.cnx.is_connected():
-#                 self.cnx.connect()
-#                 cursor = self.cursor = self.cnx.cursor()
-#                 cursor.execute(sql, params)
-#                 logging.debug("connection reconnected")
-#                 return cursor
-#             raise
     
     def save(self, tablename, data):
         table_metadata = self._metadata[tablename]
@@ -54,10 +49,14 @@ class OracleContext(DbContext):
             
         
         fields = ','.join(data.keys())
-        values = ','.join([self.dialect.format_value_string(table_metadata[k],v) for (k,v) in data.items()])
+        values = ','.join([':%s'%key for key in data.keys()])
         sql = 'insert into ' + tablename + ' (' + fields + ') values (' + values + ')'
-        logging.debug(sql)
-        return self.execute_sql(sql, None)
+        # params = {key: self.dialect.format_value_string(table_metadata[key], value) for key, value in
+        #           data.items()}
+        params = dict(data)
+        logger.debug(sql)
+        logger.debug(params)
+        return self.execute_sql(sql, params)
     
     def load_metadata(self, tablename):
         sql = """
@@ -68,18 +67,18 @@ class OracleContext(DbContext):
                 user_constraints.CONSTRAINT_TYPE,user_cons_columns.POSITION 
             from user_cons_columns
             left join user_constraints 
-                on user_constraints.CONSTRAINT_TYPE = 'P' 
+                on user_constraints.CONSTRAINT_TYPE = 'U'
                 and user_constraints.TABLE_NAME = user_cons_columns.TABLE_NAME 
                 and user_constraints.CONSTRAINT_NAME = user_cons_columns.CONSTRAINT_NAME
             where user_cons_columns.TABLE_NAME = '%(TableName)s'
             ) key_columns 
             on user_tab_cols.TABLE_NAME = key_columns.TABLE_NAME 
             and user_tab_cols.COLUMN_NAME = key_columns.COLUMN_NAME 
-            and key_columns.CONSTRAINT_TYPE = 'P'
+            and key_columns.CONSTRAINT_TYPE = 'U'
         where user_tab_cols.TABLE_NAME = '%(TableName)s'
         """
         sql = sql % {"TableName" : tablename}
-        logging.debug(sql)
+        logger.debug(sql)
         
         cursor = self.execute_sql(sql, None)
         fields = []
@@ -97,7 +96,7 @@ class OracleContext(DbContext):
 
     def load_field_info(self, field_info):
         field_datatype = field_info["Type"]
-        is_key = field_info['Key'] == 'P'
+        is_key = field_info['Key'] in ('P', 'U')
         field_name = field_info['Field']
         field_length = 0
         if field_datatype == "NUMBER" and (field_info['Precision'] == 0 or field_info['Precision'] == None):
@@ -141,11 +140,7 @@ class OracleContext(DbContext):
                 key_signed = True
                 
         if key_signed:
-            key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, data[key.name]) ) for key in key_fields])
-            sql = 'select count(0) from ' + tablename + ' where ' + key_condition
-            logging.debug(sql)
-            key_existing_row = self.execute_sql(sql).fetchone()
-            if key_existing_row[0] > 0:
+            if self.exists_key(tablename, data):
                 return self.update(tablename, data)
         
         return self.save(tablename, data)
@@ -161,19 +156,22 @@ class OracleContext(DbContext):
                 key_fields.append(field)
         
         if keys is not None:
-            key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, keys[key.name]) ) for key in key_fields])
+            key_values = ((key.name, self.dialect.format_value_string(key, keys[key.name]) ) for key in key_fields)
+            key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
             sql += ' where ' + key_condition
         
-        logging.debug(sql)
+        logger.debug(sql)
         ret = []
-        for row in self.execute_sql(sql):
+        for row in self.execute_sql(sql, keys):
             data_row = {}
             for i in range(len(table_metadata)):
                 data_row[table_metadata.keys()[i]] = row[i]
             ret.append(data_row)
         if len(ret) == 0:
             return None
-        return ret    
+        if len(ret) > 1:
+            logger.warn('get fetched more than one records, returning the first one')
+        return ret[0]
     
     def exists_key(self, tablename, keys):
         sql = 'select count(*)'
@@ -182,11 +180,13 @@ class OracleContext(DbContext):
         key_fields = filter(lambda x: x.is_key, table_metadata.values())
         
         if keys is not None:
-            key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, keys[key.name])) if keys[key.name] else ' %s is null ' % (key.name,) for key in key_fields])
+            key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
             sql += ' where ' + key_condition
         
-        logging.debug(sql)
-        cursor = self.execute_sql(sql)
+        logger.debug(sql)
+        params = dict([(key.name, keys[key.name]) for key in key_fields])
+        logger.debug(params)
+        cursor = self.execute_sql(sql, params)
         ret = cursor.fetchone()
         if ret[0] > 0:
             return True
@@ -206,31 +206,37 @@ class OracleContext(DbContext):
                
         sql = """update """ + tablename + " set "
         
-        sql += ','.join(['%s=%s' % (field_name, self.dialect.format_value_string(table_metadata[field_name], data[field_name])) 
-                         for field_name in data])
-        key_condition = ' and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, data[key.name]) ) for key in key_fields])
+        sql += ','.join(['%s=:%s' % (field_name,field_name) for field_name in data])
+        key_condition = ' and '.join('%s=:%s' % (key.name, key.name) for key in key_fields)
         sql += " where " + key_condition
-        logging.debug(sql)
-        return self.execute_sql(sql)
+        params = dict(data)
+        logger.debug(sql)
+        logger.debug(params)
+        return self.execute_sql(sql, params)
         
     def commit(self):
         self._context.commit()
+
+    def close(self):
+        self._context.close()
     
 class OracleDialect(Dialect):
     def format_value_string(self, field, value):
         if isinstance(field, StringField):
-            return '\'' + value.replace('\'', '\'\'') + '\'' 
+            return '\'' + value.replace('\'', '\'\'') + '\''
+        if isinstance(field, IntField):
+            return int(value)
         if isinstance(field, DatetimeField):
             if isinstance(value, datetime.datetime):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy-mm-dd hh24:mi:ss')"
             if isinstance(value, datetime.date):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy-mm-dd hh24:mi:ss')"
             return "TO_DATE(\'" + str(value) + "\', 'yyyy/mm/dd hh24:mi:ss')"
         if isinstance(field, DateField):
             if isinstance(value, datetime.datetime):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+                return "TO_DATE('" + value.strftime('%Y-%m-%d') + "','yyyy-mm-dd')"
             if isinstance(value, datetime.date):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy/mm/dd hh24:mi:ss')"
+                return "TO_DATE('" + value.strftime('%Y-%m-%d') + "','yyyy-mm-dd')"
             return "TO_DATE(\'" + str(value) + "\', 'yyyy/mm/dd hh24:mi:ss')"
         return str(value)
         
