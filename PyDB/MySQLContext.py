@@ -39,12 +39,10 @@ class MySQLContext(DbContext):
             dbname = urlparts.path.lstrip('/')
             other_params = urlparse.parse_qs(urlparts.query)
             other_params.update(kwargs)
-            self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname,
-                                       cursorclass=MySQLdb.cursors.DictCursor, **other_params)
+            self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname)
         else:
-            self.cnx = MySQLdb.connect(*args, cursorclass=MySQLdb.cursors.DictCursor, **kwargs)
+            self.cnx = MySQLdb.connect(*args, **kwargs)
 
-        self.cursor = self.cnx.cursor(MySQLdb.cursors.DictCursor)
         self.dialect = MySQLDialect()
     
     def execute_sql(self, sql, params=None, dict_cursor=False):
@@ -52,7 +50,6 @@ class MySQLContext(DbContext):
         from _mysql_exceptions import ProgrammingError, OperationalError
         logger.debug(sql)
         try:
-            #cursor = self.cursor
             if dict_cursor:
                 cursor = self.cnx.cursor(MySQLdb.cursors.DictCursor)
             else:
@@ -60,12 +57,6 @@ class MySQLContext(DbContext):
             cursor.execute(sql, params)
             return cursor
         except OperationalError:
-            # if not self.cnx.is_connected():
-                # self.cnx.connect()
-                # cursor = self.cursor = self.cnx.cursor()
-                # cursor.execute(sql, params)
-                # logging.debug("connection reconnected")
-                # return cursor
             raise
 
     def _save(self, tablename, data):
