@@ -8,6 +8,7 @@ import collections
 from .exceptions import *
 from itertools import groupby
 import urlparse
+from common import Meta, Table
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +39,24 @@ class MySQLContext(DbContext):
             dbname = urlparts.path.lstrip('/')
             other_params = urlparse.parse_qs(urlparts.query)
             other_params.update(kwargs)
-            self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname, **other_params)
+            self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname,
+                                       cursorclass=MySQLdb.cursors.DictCursor, **other_params)
         else:
-            self.cnx = MySQLdb.connect(*args, **kwargs)
+            self.cnx = MySQLdb.connect(*args, cursorclass=MySQLdb.cursors.DictCursor, **kwargs)
 
-        self.cursor = self.cnx.cursor()
+        self.cursor = self.cnx.cursor(MySQLdb.cursors.DictCursor)
         self.dialect = MySQLDialect()
     
-    def execute_sql(self, sql, params=None):
+    def execute_sql(self, sql, params=None, dict_cursor=False):
+        import MySQLdb
+        from _mysql_exceptions import ProgrammingError, OperationalError
         logger.debug(sql)
         try:
-            cursor = self.cursor
+            #cursor = self.cursor
+            if dict_cursor:
+                cursor = self.cnx.cursor(MySQLdb.cursors.DictCursor)
+            else:
+                cursor = self.cnx.cursor()
             cursor.execute(sql, params)
             return cursor
         except OperationalError:
@@ -128,16 +136,16 @@ class MySQLContext(DbContext):
             sql += ' where ' + key_condition
 
         logger.debug(sql)
-        ret = []
-        for row in self.execute_sql(sql):
-            data_row = {}
-            for i in range(len(table_metadata)):
-                data_row[table_metadata.keys()[i]] = row[i]
-            ret.append(data_row)
-        if len(ret) == 0:
+
+        cursor = self.execute_sql(sql, dict_cursor=True)
+        results = cursor.fetchall()
+        if len(results) == 0:
             return None
-        return ret    
-    
+        if len(results) ==1:
+            return results[0]
+        else:
+            raise Exception("More than one rows with the key fetched")
+
     def exists_key(self, tablename, keys):
         sql = 'select count(*)'
         table_metadata = self._metadata[tablename]
@@ -159,7 +167,8 @@ class MySQLContext(DbContext):
     def commit(self):
         self.cnx.commit()
 
-    def load_metadata(self, tablename, is_primary=False):
+    def load_table_metadata(self, tablename):
+        is_primary = True
         sql = 'show tables'
         cursor = self.execute_sql(sql)
         tables = cursor.fetchall()
@@ -205,6 +214,10 @@ class MySQLContext(DbContext):
                 field_list[field['Field']] = self.load_field_info(field)
         return field_list.values()
 
+    def load_metadata(self, tablename, auto_fill=True):
+        return self.load_table_metadata(tablename)
+
+
     def load_field_info(self, field_info, is_key=False):
         field_datatype = field_info["Type"].split('(')[0]
         field_length = 0
@@ -245,6 +258,7 @@ class MySQLContext(DbContext):
         for field in fields:
             field_dict[field.name] = field
         self._metadata[tablename] = field_dict
+        self._realtablename[tablename] = tablename
         return field_dict
         
     def _generate_insert_value(self, field, value):

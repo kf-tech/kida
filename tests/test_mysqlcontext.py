@@ -5,6 +5,8 @@ import unittest
 import PyDB
 import logging
 import time
+from PyDB.exceptions import *
+import datetime
 
 
 
@@ -16,7 +18,7 @@ class Test(unittest.TestCase):
         logging.basicConfig(level=logging.DEBUG)
         """
 CREATE TABLE `table1` (
-  `id` int(11) NOT NULL,
+  `id` int(11) NOT NULL auto_increment,
   `fint` int(11) DEFAULT NULL,
   `fstr` varchar(50) DEFAULT NULL,
   `flong` bigint(20) DEFAULT NULL,
@@ -34,7 +36,7 @@ CREATE TABLE `table1` (
         """
 
     def tearDown(self):
-        pass
+        self.target.close()
 
 
     def testName(self):
@@ -52,6 +54,12 @@ CREATE TABLE `table1` (
         data = {"id" : 1, "fint": 1, "fstr": 'abc'}
         context.save(tablename, data)
         context.commit()
+
+        row = context.get(tablename, {'id':1})
+        logging.debug(row)
+        self.assertIsNotNone(row)
+        self.assertEqual(row['fstr'], 'abc')
+        self.assertEqual(row['fint'], 1)
     
     def test_build_context(self):
         context = self.target
@@ -69,7 +77,7 @@ CREATE TABLE `table1` (
         
     def test_load_metadata(self):
         context = self.target
-        fields = context.load_metadata('ann_announcementinfo')
+        fields = context.load_metadata('table1')
         for field in fields:
             print field
             
@@ -87,8 +95,12 @@ CREATE TABLE `table1` (
         tablename = 'table1'
         context.set_metadata(tablename, context.load_metadata(tablename))
         data = {"fint": 1, "fstr": 'ab\'c'}
-        context.save(tablename, data)
-        context.commit()
+        try:
+            context.save(tablename, data)
+            self.fail('Did not catch the exception.')
+        except TableKeyNotSpecified:
+            pass
+
         
     def test_product_database_types(self):
         context = self.target
@@ -109,8 +121,8 @@ CREATE TABLE `table1` (
                 "id" : 1, 
                 "fint": 2, 
                 "fstr": 'abc', 
-                'fdate': time.time(), 
-                'fdatetime': time.time()}
+                'fdate': datetime.date.today(),
+                'fdatetime': datetime.datetime.now()}
         context.save_or_update(tablename, data)
         context.commit()
     
@@ -119,10 +131,12 @@ CREATE TABLE `table1` (
         tablename = 'table1'
         context.set_metadata(tablename, context.load_metadata(tablename))
         id = 1
-        rows = context.get(tablename, {'id' : id})
-        self.assertEqual(1, len(rows), "ResultSet's size is not 1")
-        self.assertEqual(id, rows[0]['id'], 'Result rows id is not %s' % id)
-        
+        row = context.get(tablename, {'id' : id})
+        logging.debug(row)
+        #self.assertEqual(1, len(rows), "ResultSet's size is not 1")
+        self.assertEqual(id, row['id'], 'Result rows id is not %s' % id)
+
+    @unittest.skip
     def test_save_10000(self):
         context = self.target
         tablename = 'table1'
@@ -168,6 +182,24 @@ CREATE TABLE `table1` (
         tablename = 'table_not_existing'
         self.assertIsNone(context.load_metadata(tablename), "Metadata should be none")
 
-if __name__ == "__main__":
-    import sys;sys.argv = ['', 'Test.test_not_existing_table_metadata']
-    unittest.main()
+
+class DBConnectionTest(unittest.TestCase):
+    def test_connect_by_url(self):
+        dburl = 'mysql://root@localhost/test'
+        db_context = PyDB.MySQLContext(dburl)
+        db_context.close()
+
+    def test_connect_by_url_no_username(self):
+        dburl = 'mysql://localhost/test'
+        db_context = PyDB.MySQLContext(dburl)
+        db_context.close()
+
+    def test_connect_by_dict(self):
+        params = {'user': 'root', 'host': 'localhost', 'db': 'test'}
+        db_context = PyDB.MySQLContext(params)
+        db_context.close()
+
+    def test_connect_by_kwargs(self):
+        db_context = PyDB.MySQLContext(user='root', host='localhost', port=3306, db='test')
+        db_context.close()
+

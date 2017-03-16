@@ -34,7 +34,3 @@ class Test(unittest.TestCase):
         value = time.time()
         ret = self.target.format_value_string(PyDB.DatetimeField("SomeField"), value)
         print ret
-
-if __name__ == "__main__":
-    import sys;sys.argv = ['', 'Test.test_datetime_formating3']
-    unittest.main()
