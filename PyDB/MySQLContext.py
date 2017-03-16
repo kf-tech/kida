@@ -35,11 +35,11 @@ class MySQLContext(DbContext):
             username = urlparts.username or ''
             password = urlparts.password or ''
             host = urlparts.hostname
-            port = urlparts.port
+            port = int(urlparts.port) if urlparts.port is not None else 3306
             dbname = urlparts.path.lstrip('/')
             other_params = urlparse.parse_qs(urlparts.query)
             other_params.update(kwargs)
-            self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname)
+            self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname, port=port)
         else:
             self.cnx = MySQLdb.connect(*args, **kwargs)
 
