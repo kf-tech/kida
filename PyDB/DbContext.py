@@ -6,6 +6,10 @@ import datetime
 import urlparse
 from common import Meta, Table
 
+KEY_TYPE_PRIMARY = 1
+KEY_TYPE_UNIQUE_KEY = 2
+KEY_TYPE_UNIQUE_INDEX = 3
+
 def create_context(dburl):
     from MySQLContext import MySQLContext
     from OracleContext import OracleContext
@@ -34,7 +38,22 @@ class DbContext(object):
     def get(self, tablename, keys):
         pass
 
+    def delete(self, tablename, keys):
+        pass
+
     def save_batch(self, tablename, rows):
+        pass
+
+    def get_table(self, tablename):
+        pass
+
+    def set_table(self, table):
+        pass
+
+    def set_metadata(self, tablename, fields):
+        pass
+
+    def load_metadata(self, tablename):
         pass
     
 class Dialect:

@@ -21,6 +21,10 @@ class Table:
             if field.name.lower() == field_name.lower():
                 return field
 
+    @property
+    def fields(self):
+        return self.__fields
+
 class Meta:
     def __init__(self):
         self.__tables = []
@@ -36,15 +40,9 @@ class Meta:
 
         self.__tables.append(table)
 
-    # def get_table(self, table_name):
-    #     table_name = table_name.lower()
-    #     for table in self.__tables:
-    #         if table.tablename.lower() == table_name:
-    #             return table
-
     def __getitem__(self, table_name):
         for table in self.__tables:
-            if table.tablename.lower() == table_name:
+            if table.tablename.lower() == table_name.lower():
                 return table
 
 

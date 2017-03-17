@@ -1,17 +1,11 @@
 import unittest
-
-#from PyDB.MySQLContext import MySQLContext
-
 import PyDB
 import logging
-import time
 from PyDB.exceptions import *
 import datetime
 
 
-
 class Test(unittest.TestCase):
-
     def setUp(self):
         self.target = PyDB.MySQLContext({'user':'root', 'host':'localhost', 'db':'test'})
         logging.debug('setUp')
@@ -36,14 +30,17 @@ CREATE TABLE `table1` (
                 primary key (k2, k1))
         """
 
+        '''
+            create table users (
+                id int not null auto_increment primary key,
+                username varchar(20) not null,
+                constraint unique idx_users_username (username)
+            )
+        '''
+
     def tearDown(self):
         logging.debug('tearDown')
         self.target.close()
-
-    def test_build_context(self):
-        context = self.target
-        self.assertIsNotNone(context, "context is none")
-        self.assertIsInstance(context, PyDB.MySQLContext, "context is not MySQLContext")
 
     def test_save(self):
         context = self.target
@@ -59,6 +56,26 @@ CREATE TABLE `table1` (
         context.commit()
 
         row = context.get(tablename, {'id':1})
+        logging.debug(row)
+        self.assertIsNotNone(row)
+        self.assertEqual(row['fstr'], 'abc')
+        self.assertEqual(row['fint'], 1)
+
+    def test_save_tablename_insentisive(self):
+        context = self.target
+        tablename = 'table1'
+        tablename_upper = 'TABLE1'
+        context.set_metadata(tablename, [
+            PyDB.IntField("id", is_key=True),
+            PyDB.StringField("fstr"),
+            PyDB.IntField("fint")
+        ])
+
+        data = {"id": 1, "fint": 1, "fstr": 'abc'}
+        context.save(tablename_upper, data)
+        context.commit()
+
+        row = context.get(tablename_upper, {'id': 1})
         logging.debug(row)
         self.assertIsNotNone(row)
         self.assertEqual(row['fstr'], 'abc')
@@ -86,7 +103,7 @@ CREATE TABLE `table1` (
         self.assertEqual(row['fstr'], 'abcd')
         self.assertEqual(row['fint'], 2)
 
-    def test_metadata(self):
+    def test_set_metadata(self):
         context = self.target
         context.set_metadata("table1", [
                                         PyDB.IntField("id", is_key = True)
@@ -98,8 +115,32 @@ CREATE TABLE `table1` (
     def test_load_metadata(self):
         context = self.target
         fields = context.load_metadata('table1')
-        for field in fields:
-            print field
+        self.assertEqual(len(fields), 6)
+
+        self.assertEqual('id', fields[0].name)
+        self.assertTrue(fields[0].is_key)
+        self.assertEqual(type(fields[0]), PyDB.IntField)
+
+        self.assertEqual('fint', fields[1].name)
+        self.assertFalse(fields[1].is_key)
+        self.assertEqual(type(fields[1]), PyDB.IntField)
+
+        self.assertEqual('fstr', fields[2].name)
+        self.assertFalse(fields[2].is_key)
+        self.assertEqual(type(fields[2]), PyDB.StringField)
+
+        self.assertEqual('flong', fields[3].name)
+        self.assertFalse(fields[3].is_key)
+        self.assertEqual(type(fields[3]), PyDB.IntField)
+
+        self.assertEqual('fdate', fields[4].name)
+        self.assertFalse(fields[4].is_key)
+        self.assertEqual(type(fields[4]), PyDB.DateField)
+
+        self.assertEqual('fdatetime', fields[5].name)
+        self.assertFalse(fields[5].is_key)
+        self.assertEqual(type(fields[5]), PyDB.DatetimeField)
+
             
     def test_load_metadata2(self):
         context = self.target
@@ -186,7 +227,7 @@ CREATE TABLE `table1` (
         tablename = 'table2'
 
         context.set_metadata(tablename, context.load_metadata(tablename))
-        list = context._metadata[tablename].values()
+        list = context._meta[tablename].fields
         self.assertEqual("k2", list[0].name, "The first field should be k2")
         self.assertEqual("k1", list[1].name, "The second field should be k1")
         
