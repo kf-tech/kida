@@ -12,10 +12,11 @@ import datetime
 
 class Test(unittest.TestCase):
 
-    
     def setUp(self):
         self.target = PyDB.MySQLContext({'user':'root', 'host':'localhost', 'db':'test'})
-        logging.basicConfig(level=logging.DEBUG)
+        logging.debug('setUp')
+        self.target.execute_sql('delete from table1')
+        self.target.execute_sql('delete from table2')
         """
 CREATE TABLE `table1` (
   `id` int(11) NOT NULL auto_increment,
@@ -27,7 +28,7 @@ CREATE TABLE `table1` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
         """
-        
+
         """
             create table table2 (
                 k1 int not null,
@@ -36,12 +37,14 @@ CREATE TABLE `table1` (
         """
 
     def tearDown(self):
+        logging.debug('tearDown')
         self.target.close()
 
+    def test_build_context(self):
+        context = self.target
+        self.assertIsNotNone(context, "context is none")
+        self.assertIsInstance(context, PyDB.MySQLContext, "context is not MySQLContext")
 
-    def testName(self):
-        pass
-    
     def test_save(self):
         context = self.target
         tablename = 'table1'
@@ -60,12 +63,29 @@ CREATE TABLE `table1` (
         self.assertIsNotNone(row)
         self.assertEqual(row['fstr'], 'abc')
         self.assertEqual(row['fint'], 1)
-    
-    def test_build_context(self):
+
+    def test_save_update(self):
         context = self.target
-        self.assertIsNotNone(context, "context is none")
-        self.assertIsInstance(context, PyDB.MySQLContext, "context is not MySQLContext")
-        
+        tablename = 'table1'
+        context.set_metadata(tablename, [
+            PyDB.IntField("id", is_key=True),
+            PyDB.StringField("fstr"),
+            PyDB.IntField("fint")
+        ])
+
+        data = {"id": 1, "fint": 1, "fstr": 'abc'}
+        context.save(tablename, data)
+
+        data['fint'] = 2
+        data['fstr'] = 'abcd'
+        context.save(tablename, data)
+
+        row = context.get(tablename, {'id': 1})
+        logging.debug(row)
+        self.assertIsNotNone(row)
+        self.assertEqual(row['fstr'], 'abcd')
+        self.assertEqual(row['fint'], 2)
+
     def test_metadata(self):
         context = self.target
         context.set_metadata("table1", [
@@ -131,6 +151,8 @@ CREATE TABLE `table1` (
         tablename = 'table1'
         context.set_metadata(tablename, context.load_metadata(tablename))
         id = 1
+        data = {'id':id}
+        context.save(tablename, data)
         row = context.get(tablename, {'id' : id})
         logging.debug(row)
         #self.assertEqual(1, len(rows), "ResultSet's size is not 1")
@@ -145,6 +167,17 @@ CREATE TABLE `table1` (
             data = {'id': i, "fint": 1, "fstr": 'ab\'c'}
             context.save(tablename, data)
             context.commit()
+
+    def test_save_10000_batch(self):
+        context = self.target
+        tablename = 'table1'
+        context.set_metadata(tablename, context.load_metadata(tablename))
+        rows = []
+        for i in xrange(10000):
+            data = {'id': i, "fint": 1, "fstr": 'ab\'c'}
+            rows.append(data)
+        context.save_batch(tablename, rows)
+
     
     def test_index_sequence(self):
         # since the primary keys order might not match the on of fields, it 
@@ -175,6 +208,7 @@ CREATE TABLE `table1` (
         keys = {'k1' : 1, 'k2' : 2}
 
         context.set_metadata(tablename, context.load_metadata(tablename))
+        context.save(tablename, keys)
         self.assertTrue(context.exists_key(tablename, keys)) 
     
     def test_not_existing_table_metadata(self):

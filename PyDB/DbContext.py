@@ -3,9 +3,18 @@
 '''
 from PyDB.fields import IntField, StringField, DatetimeField, DateField
 import datetime
+import urlparse
+from common import Meta, Table
 
-def create_context(url):
-    pss
+def create_context(dburl):
+    from MySQLContext import MySQLContext
+    from OracleContext import OracleContext
+    urlparts = urlparse.urlparse(dburl)
+    if urlparts.scheme == 'mysql':
+        return MySQLContext(dburl)
+    elif urlparts.scheme == 'oracle':
+        return OracleContext(dburl)
+    raise Exception('Not supported database scheme %s' % urlparts.scheme)
 
 
 class DbContext(object):
@@ -13,34 +22,19 @@ class DbContext(object):
     classdocs
     '''
 
-
     def __init__(self):
         '''
         Constructor
         '''
-        pass
-        
-    def _generate_insert_sql(self, tablename, table_metadata, data):
-        data = data.copy()
-        fields = ""
-        values = ""
-        for field in data.keys():
-            if field not in table_metadata.keys():
-                break
-            
-        
-        fields = ','.join(data.keys())
-        values = ','.join([self._generate_insert_value(x) for x in data.keys()])
-        sql = 'insert into ' + tablename + ' ' + fields + ' values (' + values + ')'
-        
-    def _generate_insert_value(self, field, value):
-        if field is StringField:
-            return '\'' + value.replace('\'', '\'\'') + '\'' 
-        if field is DatetimeField:
-            return '\'' + value + '\''
-        return value
+        self._meta = Meta()
 
     def save(self, tablename, row):
+        pass
+
+    def get(self, tablename, keys):
+        pass
+
+    def save_batch(self, tablename, rows):
         pass
     
 class Dialect:

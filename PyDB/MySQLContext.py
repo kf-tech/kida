@@ -8,7 +8,7 @@ import collections
 from .exceptions import *
 from itertools import groupby
 import urlparse
-from common import Meta, Table
+from .common import Table, Row
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class MySQLContext(DbContext):
         Constructor
         '''
         import MySQLdb
-        from _mysql_exceptions import ProgrammingError, OperationalError
+        super(MySQLContext, self).__init__()
         self._metadata = {}
         self._realtablename = {}
 
@@ -47,7 +47,7 @@ class MySQLContext(DbContext):
     
     def execute_sql(self, sql, params=None, dict_cursor=False):
         import MySQLdb
-        from _mysql_exceptions import ProgrammingError, OperationalError
+        from _mysql_exceptions import OperationalError
         logger.debug(sql)
         try:
             if dict_cursor:
@@ -60,15 +60,12 @@ class MySQLContext(DbContext):
             raise
 
     def _save(self, tablename, data):
-        table_metadata = self._metadata[tablename]
-        data = data.copy()
-        for field in data.keys():
-            if field not in table_metadata.keys():
-                del data[field]
-
-        fields = ','.join(data.keys())
-        values = ','.join(['%({0})s'.format(key) for key in data.keys()])
-        sql = 'insert into ' + self._realtablename[tablename] + ' (' + fields + ') values (' + values + ')'
+        table = self._meta[tablename]
+        row = Row(table, data)
+        fields = ','.join([field.name for field in row.values.keys()])
+        values = ','.join(['%({0})s'.format(field.name) for field in row.values.keys()])
+        data = {field.name : value for field, value in row.values.items()}
+        sql = 'insert into ' + table.tablename + ' (' + fields + ') values (' + values + ')'
         logger.debug(sql)
         return self.execute_sql(sql, data)
 
@@ -94,6 +91,17 @@ class MySQLContext(DbContext):
         sql += " where " + key_condition
         logger.debug(sql)
         return self.execute_sql(sql, data)
+
+    def save_batch(self, tablename, rows):
+        self.cnx.autocommit(False)
+        for row in rows:
+            if self.get(tablename, row):
+                self.update(tablename, row)
+            else:
+                self._save(tablename, row)
+
+        self.cnx.commit()
+        self.cnx.autocommit(True)
     
     def save_or_update(self, tablename, data):
         table_metadata = self._metadata[tablename]
@@ -170,10 +178,7 @@ class MySQLContext(DbContext):
         self._realtablename[tablename] = tables[tablename.upper()]
 
         sql = 'show columns from ' + self._realtablename[tablename]
-        try:
-            cursor = self.execute_sql(sql)
-        except ProgrammingError as e:
-            return None
+        cursor = self.execute_sql(sql)
 
         field_list = collections.OrderedDict()
         fields = cursor.fetchall()
@@ -249,20 +254,13 @@ class MySQLContext(DbContext):
         for field in fields:
             field_dict[field.name] = field
         self._metadata[tablename] = field_dict
+        self._meta.add_table(Table(tablename, fields))
         self._realtablename[tablename] = tablename
         return field_dict
-        
-    def _generate_insert_value(self, field, value):
-        if isinstance(field, StringField):
-            return '\'' + value.replace('\'', '\'\'') + '\'' 
-        if isinstance(field, DatetimeField):
-            return '\'' + value + '\''
-        return str(value)
 
     def close(self):
         self.cnx.close()
-         
-        
+
 
 class MySQLDialect(Dialect):
     pass
