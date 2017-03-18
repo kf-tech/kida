@@ -319,22 +319,22 @@ CREATE TABLE `table1` (
 
 class DBConnectionTest(unittest.TestCase):
     def test_connect_by_url(self):
-        dburl = 'mysql://root@localhost/pydb_test'
+        dburl = 'mysql://pydb_test:password@localhost/pydb_test'
         db_context = PyDB.MySQLContext(dburl)
         db_context.close()
 
     def test_connect_by_url_plus_user(self):
         dburl = 'mysql://localhost/pydb_test'
-        db_context = PyDB.MySQLContext(dburl, user='root')
+        db_context = PyDB.MySQLContext(dburl, user='pydb_test', passwd='password')
         db_context.close()
 
     def test_connect_by_url_no_username(self):
-        dburl = 'mysql://localhost/pydb_test'
+        dburl = 'mysql://root@localhost/pydb_test'
         db_context = PyDB.MySQLContext(dburl)
         db_context.close()
 
     def test_connect_by_dict(self):
-        params = {'user': 'root', 'host': 'localhost', 'db': 'pydb_test'}
+        params = {'user': 'pydb_test', 'passwd':'password', 'host': 'localhost', 'db': 'pydb_test'}
         db_context = PyDB.MySQLContext(params)
         db_context.close()
 

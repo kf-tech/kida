@@ -4,7 +4,6 @@
 import unittest
 import PyDB
 import logging
-import cx_Oracle
 import time
 
 @unittest.skip
