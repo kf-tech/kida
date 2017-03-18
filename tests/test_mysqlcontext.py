@@ -4,10 +4,53 @@ import logging
 from PyDB.exceptions import *
 import datetime
 
+def setup_module():
+    context = PyDB.MySQLContext(user='root', host='localhost')
+    context.execute_sql('create database pydb_test')
+    context.execute_sql('use pydb_test')
+    context.execute_sql("create user 'pydb_test'@'localhost' IDENTIFIED BY 'password'")
+    context.execute_sql("GRANT ALL ON pydb_test.* TO 'pydb_test'@'localhost';")
+
+    context.execute_sql(        """
+CREATE TABLE `table1` (
+  `id` int(11) NOT NULL auto_increment,
+  `fint` int(11) DEFAULT NULL,
+  `fstr` varchar(50) DEFAULT NULL,
+  `flong` bigint(20) DEFAULT NULL,
+  `fdate` date DEFAULT NULL,
+  `fdatetime` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+        """)
+
+    context.execute_sql(        """
+            create table table2 (
+                k1 int not null,
+                k2 int not null,
+                primary key (k2, k1))
+        """)
+
+    context.execute_sql('''
+            create table users (
+                id int not null auto_increment primary key,
+                username varchar(20) not null,
+                constraint unique idx_users_username (username)
+            )
+        ''')
+
+    context.close()
+    logging.debug('setup module')
+
+def teardown_module():
+    context = PyDB.MySQLContext({'user':'root', 'host':'localhost', 'db':'pydb_test'})
+    context.execute_sql('drop database pydb_test')
+    context.close()
+    logging.debug('teardown module')
+
 
 class Test(unittest.TestCase):
     def setUp(self):
-        self.target = PyDB.MySQLContext({'user':'root', 'host':'localhost', 'db':'test'})
+        self.target = PyDB.MySQLContext({'user':'pydb_test', 'host':'localhost', 'passwd': 'password', 'db':'pydb_test'})
         logging.debug('setUp')
         self.target.execute_sql('delete from table1')
         self.target.execute_sql('delete from table2')
@@ -41,6 +84,7 @@ CREATE TABLE `table1` (
     def tearDown(self):
         logging.debug('tearDown')
         self.target.close()
+        self.target = None
 
     def test_save(self):
         context = self.target
@@ -276,6 +320,11 @@ class DBConnectionTest(unittest.TestCase):
     def test_connect_by_url(self):
         dburl = 'mysql://root@localhost/test'
         db_context = PyDB.MySQLContext(dburl)
+        db_context.close()
+
+    def test_connect_by_url_plus_user(self):
+        dburl = 'mysql://localhost/test'
+        db_context = PyDB.MySQLContext(dburl, user='root')
         db_context.close()
 
     def test_connect_by_url_no_username(self):

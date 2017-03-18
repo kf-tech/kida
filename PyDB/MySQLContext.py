@@ -17,7 +17,7 @@ class MySQLContext(DbContext):
     classdocs
     '''
 
-    def __init__(self, dburl=None, *args, **kwargs):
+    def __init__(self, dburl=None, user=None, *args, **kwargs):
         '''
         Constructor
         '''
@@ -27,6 +27,8 @@ class MySQLContext(DbContext):
         if dburl is not None and isinstance(dburl, dict):
             params = dburl.copy()
             params.update(kwargs)
+            if user is not None:
+                params.update(user=user)
             self.cnx = MySQLdb.connect(**params)
         elif dburl is not None:
             urlparts = urlparse.urlparse(dburl)
@@ -35,11 +37,16 @@ class MySQLContext(DbContext):
             host = urlparts.hostname
             port = int(urlparts.port) if urlparts.port is not None else 3306
             dbname = urlparts.path.lstrip('/')
-            other_params = urlparse.parse_qs(urlparts.query)
-            other_params.update(kwargs)
+            params = urlparse.parse_qs(urlparts.query)
+            params.update(kwargs)
+            if user is not None:
+                params.update(user=user)
             self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname, port=port)
         else:
-            self.cnx = MySQLdb.connect(*args, **kwargs)
+            params = kwargs.copy()
+            if user is not None:
+                params.update(user=user)
+            self.cnx = MySQLdb.connect(*args, **params)
 
         self.dialect = MySQLDialect()
     
