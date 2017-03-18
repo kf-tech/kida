@@ -19,7 +19,7 @@ CREATE TABLE `table1` (
   `flong` bigint(20) DEFAULT NULL,
   `fdate` date DEFAULT NULL,
   `fdatetime` datetime DEFAULT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1
         """
 
@@ -112,7 +112,7 @@ CREATE TABLE `table1` (
         tablename = 'table1'
         context.save(tablename, data)
         
-    def test_load_metadata(self):
+    def test_load_metadata_default_primarykey(self):
         context = self.target
         fields = context.load_metadata('table1')
         self.assertEqual(len(fields), 6)
@@ -140,6 +140,20 @@ CREATE TABLE `table1` (
         self.assertEqual('fdatetime', fields[5].name)
         self.assertFalse(fields[5].is_key)
         self.assertEqual(type(fields[5]), PyDB.DatetimeField)
+
+    def test_load_metadata_default_uniquekey(self):
+        context = self.target
+        fields = context.load_metadata('users', key_type=PyDB.KEY_TYPE_UNIQUE_KEY)
+        self.assertEqual(len(fields), 2)
+
+        # keys go first
+        self.assertEqual('username', fields[0].name)
+        self.assertTrue(fields[0].is_key)
+        self.assertEqual(type(fields[0]), PyDB.StringField)
+
+        self.assertEqual('id', fields[1].name)
+        self.assertFalse(fields[1].is_key)
+        self.assertEqual(type(fields[1]), PyDB.IntField)
 
             
     def test_load_metadata2(self):
