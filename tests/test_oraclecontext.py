@@ -7,6 +7,7 @@ import logging
 import cx_Oracle
 import time
 
+@unittest.skip
 class Test(unittest.TestCase):
 
     def setUp(self):
