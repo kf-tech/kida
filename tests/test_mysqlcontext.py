@@ -44,6 +44,7 @@ CREATE TABLE `table1` (
 def teardown_module():
     context = PyDB.MySQLContext({'user':'root', 'host':'localhost', 'db':'pydb_test'})
     context.execute_sql('drop database pydb_test')
+    context.execute_sql("drop user pydb_test@'localhost'")
     context.close()
     logging.debug('teardown module')
 
