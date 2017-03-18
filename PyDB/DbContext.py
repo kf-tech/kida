@@ -3,8 +3,22 @@
 '''
 from PyDB.fields import IntField, StringField, DatetimeField, DateField
 import datetime
+import urlparse
+from common import Meta, Table
 
-def create_context(url):
+KEY_TYPE_PRIMARY = 1
+KEY_TYPE_UNIQUE_KEY = 2
+KEY_TYPE_UNIQUE_INDEX = 3
+
+def create_context(dburl):
+    from MySQLContext import MySQLContext
+    from OracleContext import OracleContext
+    urlparts = urlparse.urlparse(dburl)
+    if urlparts.scheme == 'mysql':
+        return MySQLContext(dburl)
+    elif urlparts.scheme == 'oracle':
+        return OracleContext(dburl)
+    raise Exception('Not supported database scheme %s' % urlparts.scheme)
 
 
 class DbContext(object):
@@ -12,32 +26,35 @@ class DbContext(object):
     classdocs
     '''
 
-
     def __init__(self):
         '''
         Constructor
         '''
+        self._meta = Meta()
+
+    def save(self, tablename, row):
         pass
-        
-    def _generate_insert_sql(self, tablename, table_metadata, data):
-        data = data.copy()
-        fields = ""
-        values = ""
-        for field in data.keys():
-            if field not in table_metadata.keys():
-                break
-            
-        
-        fields = ','.join(data.keys())
-        values = ','.join([self._generate_insert_value(x) for x in data.keys()])
-        sql = 'insert into ' + tablename + ' ' + fields + ' values (' + values + ')'
-        
-    def _generate_insert_value(self, field, value):
-        if field is StringField:
-            return '\'' + value.replace('\'', '\'\'') + '\'' 
-        if field is DatetimeField:
-            return '\'' + value + '\''
-        return value
+
+    def get(self, tablename, keys):
+        pass
+
+    def delete(self, tablename, keys):
+        pass
+
+    def save_batch(self, tablename, rows):
+        pass
+
+    def get_table(self, tablename):
+        pass
+
+    def set_table(self, table):
+        pass
+
+    def set_metadata(self, tablename, fields):
+        pass
+
+    def load_metadata(self, tablename):
+        pass
     
 class Dialect:
     def format_value_string(self, field, value):

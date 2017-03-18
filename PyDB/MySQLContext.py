@@ -2,82 +2,110 @@
 '''
 from PyDB import DbContext
 from PyDB.fields import IntField, StringField, DatetimeField, DateField, DecimalField, BinaryField
-from DbContext import Dialect
+from DbContext import Dialect, KEY_TYPE_PRIMARY, KEY_TYPE_UNIQUE_INDEX, KEY_TYPE_UNIQUE_KEY
 import logging
 import collections
+from .exceptions import *
 from itertools import groupby
-from _mysql_exceptions import ProgrammingError, OperationalError 
+import urlparse
+from .common import Table, Row
+
+logger = logging.getLogger(__name__)
 
 class MySQLContext(DbContext):
     '''
     classdocs
     '''
 
-    def __init__(self, conn_str):
+    def __init__(self, dburl=None, user=None, *args, **kwargs):
         '''
         Constructor
         '''
-        import MySQLdb      
-        self._metadata = {}
-        self._realtablename = {}
-        self.cnx = MySQLdb.connect(**conn_str)
-        self.cursor = self.cnx.cursor()
+        import MySQLdb
+        super(MySQLContext, self).__init__()
+
+        if dburl is not None and isinstance(dburl, dict):
+            params = dburl.copy()
+            params.update(kwargs)
+            if user is not None:
+                params.update(user=user)
+            self.cnx = MySQLdb.connect(**params)
+        elif dburl is not None:
+            urlparts = urlparse.urlparse(dburl)
+            username = urlparts.username or ''
+            password = urlparts.password or ''
+            host = urlparts.hostname
+            port = int(urlparts.port) if urlparts.port is not None else 3306
+            dbname = urlparts.path.lstrip('/')
+            params = urlparse.parse_qs(urlparts.query)
+            params.update(kwargs)
+            if user is not None:
+                params.update(user=user)
+            self.cnx = MySQLdb.connect(host=host, user=username, passwd = password, db=dbname, port=port)
+        else:
+            params = kwargs.copy()
+            if user is not None:
+                params.update(user=user)
+            self.cnx = MySQLdb.connect(*args, **params)
+
         self.dialect = MySQLDialect()
     
-    def execute_sql(self, sql, params=None):
-        logging.debug(sql)
+    def execute_sql(self, sql, params=None, dict_cursor=False):
+        import MySQLdb
+        from _mysql_exceptions import OperationalError
+        logger.debug(sql)
         try:
-            cursor = self.cursor
+            if dict_cursor:
+                cursor = self.cnx.cursor(MySQLdb.cursors.DictCursor)
+            else:
+                cursor = self.cnx.cursor()
             cursor.execute(sql, params)
             return cursor
         except OperationalError:
-            # if not self.cnx.is_connected():
-                # self.cnx.connect()
-                # cursor = self.cursor = self.cnx.cursor()
-                # cursor.execute(sql, params)
-                # logging.debug("connection reconnected")
-                # return cursor
             raise
-    
-    
-    def save(self, tablename, data):
-        table_metadata = self._metadata[tablename]
-        data = data.copy()
-        for field in data.keys():
-            if field not in table_metadata.keys():
-                del data[field]
 
-        fields = ','.join(data.keys())
-        #values = ','.join([self.dialect.format_value_string(table_metadata[k],v) for (k,v) in data.items()])
-        values = ','.join(['%({0})s'.format(key) for key in data.keys()])
-        sql = 'insert into ' + self._realtablename[tablename] + ' (' + fields + ') values (' + values + ')'
-        logging.debug(sql)
+    def _save(self, tablename, data):
+        table = self._meta[tablename]
+        row = Row(table, data)
+        fields = ','.join([field.name for field in row.values.keys()])
+        values = ','.join(['%({0})s'.format(field.name) for field in row.values.keys()])
+        data = {field.name : value for field, value in row.values.items()}
+        sql = 'insert into ' + table.tablename + ' (' + fields + ') values (' + values + ')'
+        logger.debug(sql)
         return self.execute_sql(sql, data)
+
+    def save(self, tablename, data):
+        self.save_or_update(tablename, data)
     
     def update(self, tablename, data):
-        table_metadata = self._metadata[tablename]
-        key_fields = []
-        for field in table_metadata.values():
-            if field.is_key:
-                key_fields.append(field)
-                
-        data = data.copy()
-        for key in data.keys():
-            if key not in table_metadata:
-                del data[key]
+        table = self._meta[tablename]
+        row = Row(table, data)
 
-        sql = """update """ + self._realtablename[tablename] + " set "
+        key_fields = [field for field in table.fields if field.is_key]
+
+        sql = """update """ + table.tablename + " set "
         
-        sql += ','.join(['{0}=%({0})s'.format(field_name) for field_name in data])
-        key_condition = ' and'.join([' {0}=%({0})s '.format(key.name) for key in key_fields])
+        sql += ','.join(['{0}=%({0})s'.format(field.name) for field in row.values.keys()])
+        key_condition = ' and'.join([' {0}=%({0})s '.format(field.name) for field in key_fields])
         sql += " where " + key_condition
-        logging.debug(sql)
+        logger.debug(sql)
         return self.execute_sql(sql, data)
+
+    def save_batch(self, tablename, rows):
+        self.cnx.autocommit(False)
+        for row in rows:
+            if self.get(tablename, row):
+                self.update(tablename, row)
+            else:
+                self._save(tablename, row)
+
+        self.cnx.commit()
+        self.cnx.autocommit(True)
     
     def save_or_update(self, tablename, data):
-        table_metadata = self._metadata[tablename]
+        table = self._meta[tablename]
         key_fields = []
-        for field in table_metadata.values():
+        for field in table.fields:
             if field.is_key:
                 key_fields.append(field)
                
@@ -89,73 +117,66 @@ class MySQLContext(DbContext):
         if key_signed:
             if self.exists_key(tablename, data):
                 return self.update(tablename, data)
-            # key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, data[key.name]) ) for key in key_fields])
-            # sql = 'select count(0) from ' + tablename + ' where ' + key_condition
-            # logging.debug(sql)
-            # key_existing_row = self.execute_sql(sql).fetchone()
-            # if key_existing_row[0] > 0:
-            #     return self.update(tablename, data)
-        
-        return self.save(tablename, data)
+        else:
+            raise TableKeyNotSpecified()
+
+        return self._save(tablename, data)
     
     def get(self, tablename, keys=None):
         sql = 'select '
-        table_metadata = self._metadata[tablename]
-        sql_field = ','.join([field for field in table_metadata])
-        sql += sql_field + ' from ' + self._realtablename[tablename]
-        key_fields = filter(lambda x: x.is_key, table_metadata.values())
+        table = self._meta[tablename]
+        sql_field = ','.join([field.name for field in table.fields])
+        sql += sql_field + ' from ' + table.tablename
+        key_fields = [field for field in table.fields if field.is_key]
         
         if keys is not None:
             key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, keys[key.name]) ) for key in key_fields])
             sql += ' where ' + key_condition
-        
-        logging.debug(sql)
-        ret = []
-        for row in self.execute_sql(sql):
-            data_row = {}
-            for i in range(len(table_metadata)):
-                data_row[table_metadata.keys()[i]] = row[i]
-            ret.append(data_row)
-        if len(ret) == 0:
+
+        logger.debug(sql)
+
+        cursor = self.execute_sql(sql, dict_cursor=True)
+        results = cursor.fetchall()
+        if len(results) == 0:
             return None
-        return ret    
-    
+        if len(results) ==1:
+            return results[0]
+        else:
+            raise Exception("More than one rows with the key fetched")
+
     def exists_key(self, tablename, keys):
         sql = 'select count(*)'
-        table_metadata = self._metadata[tablename]
-        sql += ' from `' + self._realtablename[tablename] + '`'
-        key_fields = filter(lambda x: x.is_key, table_metadata.values())
+        table = self._meta[tablename]
+        sql += ' from `' + table.tablename + '`'
+        key_fields = [field for field in table.fields if field.is_key]
         
         if keys is not None:
             #key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, keys[key.name]) ) for key in key_fields])
             key_condition = ' and '.join([' {0} = %({0})s '.format(key.name) for key in key_fields])
             sql += ' where ' + key_condition
-        
-        logging.debug(sql)
+
+        logger.debug(sql)
         cursor = self.execute_sql(sql, keys)
         ret = cursor.fetchone()
         if ret[0] > 0:
             return True
         return False
-                
+
     def commit(self):
         self.cnx.commit()
 
-    def load_metadata(self, tablename, is_primary=False):
+    def load_table_metadata(self, tablename, auto_fill=False, key_type=KEY_TYPE_PRIMARY):
+        is_primary = True
         sql = 'show tables'
         cursor = self.execute_sql(sql)
         tables = cursor.fetchall()
         tables = {x[0].upper(): x[0] for x in tables}
         if not tables.has_key(tablename.upper()):
-            logging.error("Table '%s' doesn't exist" % tablename)
+            logger.error("Table '%s' doesn't exist" % tablename)
             return None
-        self._realtablename[tablename] = tables[tablename.upper()]
 
-        sql = 'show columns from ' + self._realtablename[tablename]
-        try:
-            cursor = self.execute_sql(sql)
-        except ProgrammingError as e:
-            return None
+        sql = 'show columns from ' + tablename
+        cursor = self.execute_sql(sql)
 
         field_list = collections.OrderedDict()
         fields = cursor.fetchall()
@@ -167,8 +188,11 @@ class MySQLContext(DbContext):
             'Default': x[4],
             'Extra': x[5]
         }, fields)
-        logging.debug(fields)
-        sql = 'show index from ' + self._realtablename[tablename] + " where Non_unique = 0"
+        logger.debug(fields)
+        if key_type == KEY_TYPE_PRIMARY:
+            sql = 'show index from ' + tablename + " where Non_unique = 0 and key_name='PRIMARY'"
+        else:
+            sql = 'show index from ' + tablename + " where Non_unique = 0 and key_name<>'PRIMARY'"
         cursor = self.execute_sql(sql)
         keys = cursor.fetchall()
         keys = sorted(
@@ -177,7 +201,7 @@ class MySQLContext(DbContext):
             reverse=is_primary)
         group = groupby(keys, lambda x: x[2]).next()[1] if len(keys) > 0 else ()
         keys = map(lambda x: {'Column_name': x[4]}, group)
-        logging.debug(keys)
+        logger.debug(keys)
         for key in keys:
             key_field = filter(lambda x: x['Field'] == key['Column_name'], fields)[0]
             field_list[key_field['Field']] = self.load_field_info(key_field, is_key=True)
@@ -187,10 +211,12 @@ class MySQLContext(DbContext):
                 field_list[field['Field']] = self.load_field_info(field)
         return field_list.values()
 
+    def load_metadata(self, tablename, key_type=KEY_TYPE_PRIMARY):
+        return self.load_table_metadata(tablename, key_type=key_type)
+
+
     def load_field_info(self, field_info, is_key=False):
         field_datatype = field_info["Type"].split('(')[0]
-        field_length = 0
-        field_precision = 0
         if field_datatype == "bigint":
             return IntField(field_info['Field'], is_key=is_key)
         elif field_datatype == 'datetime':
@@ -226,20 +252,12 @@ class MySQLContext(DbContext):
         field_dict = collections.OrderedDict()
         for field in fields:
             field_dict[field.name] = field
-        self._metadata[tablename] = field_dict
+        self._meta.add_table(Table(tablename, fields))
         return field_dict
-        
-    def _generate_insert_value(self, field, value):
-        if isinstance(field, StringField):
-            return '\'' + value.replace('\'', '\'\'') + '\'' 
-        if isinstance(field, DatetimeField):
-            return '\'' + value + '\''
-        return str(value)
 
     def close(self):
         self.cnx.close()
-         
-        
+
 
 class MySQLDialect(Dialect):
     pass

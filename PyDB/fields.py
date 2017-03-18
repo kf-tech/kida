@@ -15,6 +15,9 @@ class Field(object):
         self.name = name
         if 'is_key' in kwargs:
             self.is_key = kwargs['is_key']
+
+    def __repr__(self):
+        return '%s (%s, %s)' % (type(self), self.name, self.is_key)
         
 
 class DatetimeField(Field):
