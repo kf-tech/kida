@@ -192,8 +192,10 @@ class MySQLContext(DbContext):
         logger.debug(fields)
         if key_type == KEY_TYPE_PRIMARY:
             sql = 'show index from ' + tablename + " where Non_unique = 0 and key_name='PRIMARY'"
-        else:
+        elif key_type == KEY_TYPE_UNIQUE_KEY or key_type == KEY_TYPE_UNIQUE_INDEX:
             sql = 'show index from ' + tablename + " where Non_unique = 0 and key_name<>'PRIMARY'"
+        else:
+            raise Exception('Not supported key_type %s' % key_type)
         cursor = self.execute_sql(sql)
         keys = cursor.fetchall()
         keys = sorted(
