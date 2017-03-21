@@ -34,19 +34,27 @@ class MySQLContext(DbContext):
             self.cnx = MySQLdb.connect(**params)
         elif dburl is not None:
             urlparts = urlparse.urlparse(dburl)
-            username = urlparts.username or user or ''
-            password = urlparts.password or passwd or ''
+            username = urlparts.username or user
+            password = urlparts.password or passwd
             host = urlparts.hostname
             port = int(urlparts.port) if urlparts.port is not None else 3306
             dbname = urlparts.path.lstrip('/')
-            params = urlparse.parse_qs(urlparts.query)
-            params.update(kwargs)
-            params.update(host=host, port=port, user=username, passwd=password, db=dbname)
-            self.cnx = MySQLdb.connect(**params)
+            params = {}
+            for key , values in urlparse.parse_qs(urlparts.query).items():
+                params.update({key: values[0]})
+            if username is not None:
+                params.update(user=username)
+            if password is not None:
+                params.update(passwd=password)
+            params.update(host=host, port=port, db=dbname)
+            logger.debug(params)
+            self.cnx = MySQLdb.connect(*args, **params)
         else:
             params = kwargs.copy()
             if user is not None:
                 params.update(user=user)
+            if passwd is not None:
+                params.update(passwd=passwd)
             self.cnx = MySQLdb.connect(*args, **params)
 
         self.dialect = MySQLDialect()
