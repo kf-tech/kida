@@ -53,7 +53,7 @@ class OracleContext(DbContext):
     '''
     
 
-    def __init__(self, dburl=None, user=None, passwd=None, host=None, port=None, sid=None, service_name=None, **kwargs):
+    def __init__(self, dburl=None, user=None, password=None, host=None, port=None, sid=None, service_name=None, **kwargs):
         '''
         Constructor
         '''
@@ -82,6 +82,10 @@ class OracleContext(DbContext):
 
         import cx_Oracle
         params.update(kwargs)
+        if user:
+            params.update(user = user)
+        if password:
+            params.update(password=password)
         self._metadata = {}
         if sid:
             dsn = cx_Oracle.makedsn(host, port, sid=sid)
@@ -239,8 +243,7 @@ class OracleContext(DbContext):
         sql_field = ','.join([field.name for field in table.fields])
         sql += sql_field + ' from ' + tablename
         key_fields = [field for field in table.fields if field.is_key]
-        key_row = Row(table, keys)
-        
+
         key_condition = ' and '.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
         sql += ' where ' + key_condition
 
@@ -272,25 +275,16 @@ class OracleContext(DbContext):
         return False
     
     def update(self, tablename, data):
-        table_metadata = self._metadata[tablename]
-        key_fields = []
-        for field in table_metadata.values():
-            if field.is_key:
-                key_fields.append(field)
-                
-        data = data.copy()
-        for key in data.keys():
-            if key not in table_metadata:
-                del data[key]
-               
+        table = self._meta[tablename]
+        key_fields = [field for field in table.fields if field.is_key]
         sql = """update """ + tablename + " set "
-        
-        sql += ','.join(['%s=:%s' % (field_name,field_name) for field_name in data])
-        key_condition = ' and '.join('%s=:%s' % (key.name, key.name) for key in key_fields)
+        row = Row(table, data)
+        sql += ','.join(['%s=:%s' % (field.name,field.name) for field in row.values.keys()])
+
+        key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
+
+        params = {field.name: value for field, value in row.values.items()}
         sql += " where " + key_condition
-        params = dict(data)
-        logger.debug(sql)
-        logger.debug(params)
         return self.execute_sql(sql, params)
         
     def commit(self):

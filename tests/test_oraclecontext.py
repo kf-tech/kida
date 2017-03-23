@@ -117,6 +117,26 @@ class Test(unittest.TestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row['fstr'], 'abc')
         self.assertEqual(row['fint'], 1)
+
+    def test_save_column_insentisive(self):
+        context = self.target
+        tablename = 'table1'
+        tablename_upper = 'TABLE1'
+        context.set_metadata(tablename, [
+            PyDB.IntField("id", is_key=True),
+            PyDB.StringField("fstr"),
+            PyDB.IntField("fint")
+        ])
+
+        data = {"ID": 1, "FINT": 1, "FSTR": 'abc'}
+        context.save(tablename_upper, data)
+        context.commit()
+
+        row = context.get(tablename_upper, {'id': 1})
+        logging.debug(row)
+        self.assertIsNotNone(row)
+        self.assertEqual(row['fstr'], 'abc')
+        self.assertEqual(row['fint'], 1)
         
     def test_save_update(self):
         context = self.target
@@ -132,6 +152,28 @@ class Test(unittest.TestCase):
 
         data['fint'] = 2
         data['fstr'] = 'abcd'
+        context.save(tablename, data)
+
+        row = context.get(tablename, {'id': 1})
+        self.assertIsNotNone(row)
+        self.assertEqual(row['fstr'], 'abcd')
+        self.assertEqual(row['fint'], 2)
+
+    def test_save_update_column_caseinsentive(self):
+        context = self.target
+        tablename = 'table1'
+        context.set_metadata(tablename, [
+            PyDB.IntField("id", is_key=True),
+            PyDB.StringField("fstr"),
+            PyDB.IntField("fint")
+        ])
+
+        data = {"id": 1, "fint": 1, "fstr": 'abc'}
+        context.save(tablename, data)
+
+        data['fint'] = 2
+        data['fstr'] = 'abcd'
+        data = {"ID": 1, "FINT": 2, "FSTR": 'abcd'}
         context.save(tablename, data)
 
         row = context.get(tablename, {'id': 1})
