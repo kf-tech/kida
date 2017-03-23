@@ -263,6 +263,15 @@ class Test(unittest.TestCase):
         context.save(tablename, keys)
         self.assertTrue(context.exists_key(tablename, keys))
 
+    def test_not_existing_table_metadata(self):
+        context = self.target
+        tablename = 'table_not_existing'
+        try:
+            context.load_metadata(tablename)
+            self.fail('Should raise TableNotExistError here')
+        except TableNotExistError:
+            pass
+
 if __name__ == "__main__":
     import sys;sys.argv = ['', 'Test.test_save_or_update']
     unittest.main()

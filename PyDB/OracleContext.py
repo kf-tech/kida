@@ -173,7 +173,7 @@ class OracleContext(DbContext):
                      }
             fields.append(self.load_field_info(field_info))
         if len(fields)==0:
-            raise Exception("Table does not exist.")
+            raise TableNotExistError()
         return fields
 
     def load_field_info(self, field_info):
