@@ -226,9 +226,7 @@ CREATE TABLE `table1` (
         context = self.target
         cursor = context.execute_sql("show tables")
         rows = cursor.fetchall()
-#         for row in cursor:
-#             rows.append(row)
-        
+
         for row in rows:
             context.load_metadata(row[0])
             print row

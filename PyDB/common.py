@@ -33,7 +33,6 @@ class Meta:
         if not isinstance(table, Table):
             raise Exception('Wrong table type.')
 
-        logger.debug(self.__tables)
         for existing_table in self.__tables:
             if existing_table.tablename.lower() == table.tablename.lower():
                 raise Exception('Table already exists')
@@ -46,13 +45,24 @@ class Meta:
                 return table
 
 
-class Row:
+class Row(object):
     def __init__(self, table, data_dict):
         self.values = {}
         for key, value in data_dict.items():
             field = table.get_field(key)
             if field:
                 self.values[field] = value
+
+    def __getitem__(self, item):
+        for key in self.values.keys():
+            if key.name.lower() == item.lower():
+                return self.values[key]\
+
+    def __len__(self):
+        return self.values.__len__()
+
+
+
 
 
 

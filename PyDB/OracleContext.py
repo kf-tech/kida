@@ -2,14 +2,49 @@
 '''
 from PyDB import DbContext
 from fields import IntField, StringField, DatetimeField, DateField, DecimalField, BinaryField
-from DbContext import Dialect
+from DbContext import Dialect, KEY_TYPE_PRIMARY, KEY_TYPE_UNIQUE_INDEX, KEY_TYPE_UNIQUE_KEY
 import logging
 import datetime
-
-import os 
+import urlparse
+import os
+from .common import Row, Table, Meta
+from .exceptions import *
 os.environ["NLS_LANG"] = ".UTF8"
 
 logger = logging.getLogger('PyDB')
+
+class CaseInsensitiveDict(dict):
+    @classmethod
+    def _k(cls, key):
+        return key.lower() if isinstance(key, basestring) else key
+
+    def __init__(self, *args, **kwargs):
+        super(CaseInsensitiveDict, self).__init__(*args, **kwargs)
+        self._convert_keys()
+    def __getitem__(self, key):
+        return super(CaseInsensitiveDict, self).__getitem__(self.__class__._k(key))
+    def __setitem__(self, key, value):
+        super(CaseInsensitiveDict, self).__setitem__(self.__class__._k(key), value)
+    def __delitem__(self, key):
+        return super(CaseInsensitiveDict, self).__delitem__(self.__class__._k(key))
+    def __contains__(self, key):
+        return super(CaseInsensitiveDict, self).__contains__(self.__class__._k(key))
+    def has_key(self, key):
+        return super(CaseInsensitiveDict, self).has_key(self.__class__._k(key))
+    def pop(self, key, *args, **kwargs):
+        return super(CaseInsensitiveDict, self).pop(self.__class__._k(key), *args, **kwargs)
+    def get(self, key, *args, **kwargs):
+        return super(CaseInsensitiveDict, self).get(self.__class__._k(key), *args, **kwargs)
+    def setdefault(self, key, *args, **kwargs):
+        return super(CaseInsensitiveDict, self).setdefault(self.__class__._k(key), *args, **kwargs)
+    def update(self, E={}, **F):
+        super(CaseInsensitiveDict, self).update(self.__class__(E))
+        super(CaseInsensitiveDict, self).update(self.__class__(**F))
+    def _convert_keys(self):
+        for k in list(self.keys()):
+            v = super(CaseInsensitiveDict, self).pop(k)
+            self.__setitem__(k, v)
+
 
 
 class OracleContext(DbContext):
@@ -18,18 +53,43 @@ class OracleContext(DbContext):
     '''
     
 
-    def __init__(self, user, password, host, port=1521, sid=None, service_name=None, **kwargs):
+    def __init__(self, dburl=None, user=None, passwd=None, host=None, port=None, sid=None, service_name=None, **kwargs):
         '''
         Constructor
         '''
+        super(OracleContext, self).__init__()
+
+        params = {}
+        if dburl is not None:
+            urlparts = urlparse.urlparse(dburl)
+            if urlparts.username:
+                params['user'] = urlparts.username
+            if urlparts.password:
+                params['password'] = urlparts.password
+
+            port_inurl = None
+
+            if urlparts.port:
+            #    params['port'] = int(urlparts.port)
+                port_inurl = int(urlparts.port)
+            port = port or port_inurl or 1521
+            #if urlparts.hostname:
+            #    params['host'] = urlparts.hostname
+            host = host or urlparts.hostname
+            service_name = service_name or urlparts.path.lstrip('/')
+            for key, values in urlparse.parse_qs(urlparts.query):
+                params[key] = values[0]
+
         import cx_Oracle
+        params.update(kwargs)
         self._metadata = {}
-        self.dialect = OracleDialect()
         if sid:
             dsn = cx_Oracle.makedsn(host, port, sid=sid)
         else:
             dsn = cx_Oracle.makedsn(host, port, service_name=service_name)
-        self._context = cx_Oracle.connect(user = user, password = password, dsn=dsn)
+        logger.debug('dsn: %s' % dsn)
+        logger.debug('host: %s' % host)
+        self._context = cx_Oracle.connect(dsn=dsn, **params)
         self._cursor = self._context.cursor()
         self._cursor.execute("ALTER SESSION  SET NLS_DATE_FORMAT='YYYY-MM-DD'")
         
@@ -37,49 +97,69 @@ class OracleContext(DbContext):
         cursor = self._cursor
         params = params or {}
         cursor.execute(sql, params)
+        logger.debug(sql)
+        if params:
+            logger.debug(params)
         return cursor
+
+    def _save(self, tablename, data):
+        table = self._meta[tablename]
+        row = Row(table, data)
+        fields = ','.join([field.name for field in row.values.keys()])
+        values = ','.join([':{0}'.format(field.name) for field in row.values.keys()])
+        data = {field.name : value for field, value in row.values.items()}
+        sql = 'insert into ' + table.tablename + ' (' + fields + ') values (' + values + ')'
+        logger.debug(sql)
+        return self.execute_sql(sql, data)
     
     def save(self, tablename, data):
-        table_metadata = self._metadata[tablename]
-        
-        data = data.copy()
-        for field in data.keys():
-            if field not in table_metadata.keys():
-                del data[field]
-            
-        
-        fields = ','.join(data.keys())
-        values = ','.join([':%s'%key for key in data.keys()])
-        sql = 'insert into ' + tablename + ' (' + fields + ') values (' + values + ')'
-        # params = {key: self.dialect.format_value_string(table_metadata[key], value) for key, value in
-        #           data.items()}
-        params = dict(data)
-        logger.debug(sql)
-        logger.debug(params)
-        return self.execute_sql(sql, params)
+        self.save_or_update(tablename, data)
     
-    def load_metadata(self, tablename):
-        sql = """
-        select user_tab_cols.COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, 
-            NULLABLE, CONSTRAINT_TYPE from user_tab_cols
-        left join( 
-            select user_cons_columns.TABLE_NAME, user_cons_columns.COLUMN_NAME, 
-                user_constraints.CONSTRAINT_TYPE,user_cons_columns.POSITION 
-            from user_cons_columns
-            left join user_constraints 
-                on user_constraints.CONSTRAINT_TYPE = 'U'
-                and user_constraints.TABLE_NAME = user_cons_columns.TABLE_NAME 
-                and user_constraints.CONSTRAINT_NAME = user_cons_columns.CONSTRAINT_NAME
-            where user_cons_columns.TABLE_NAME = '%(TableName)s'
-            ) key_columns 
-            on user_tab_cols.TABLE_NAME = key_columns.TABLE_NAME 
-            and user_tab_cols.COLUMN_NAME = key_columns.COLUMN_NAME 
-            and key_columns.CONSTRAINT_TYPE = 'U'
-        where user_tab_cols.TABLE_NAME = '%(TableName)s'
-        """
-        sql = sql % {"TableName" : tablename}
-        logger.debug(sql)
-        
+    def load_metadata(self, tablename, auto_fill=False, key_type=KEY_TYPE_PRIMARY):
+        tablename = tablename.upper()
+        if key_type == KEY_TYPE_PRIMARY:
+            sql = """
+            select user_tab_cols.COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION,
+                NULLABLE, CONSTRAINT_TYPE from user_tab_cols
+            left join(
+                select user_cons_columns.TABLE_NAME, user_cons_columns.COLUMN_NAME,
+                    user_constraints.CONSTRAINT_TYPE,user_cons_columns.POSITION
+                from user_cons_columns
+                left join user_constraints
+                    on user_constraints.CONSTRAINT_TYPE = 'P'
+                    and user_constraints.TABLE_NAME = user_cons_columns.TABLE_NAME
+                    and user_constraints.CONSTRAINT_NAME = user_cons_columns.CONSTRAINT_NAME
+                where user_cons_columns.TABLE_NAME = '%(TableName)s'
+                ) key_columns
+                on user_tab_cols.TABLE_NAME = key_columns.TABLE_NAME
+                and user_tab_cols.COLUMN_NAME = key_columns.COLUMN_NAME
+                and key_columns.CONSTRAINT_TYPE = 'P'
+            where user_tab_cols.TABLE_NAME = '%(TableName)s'
+            """
+            sql = sql % {"TableName" : tablename}
+        elif key_type == KEY_TYPE_UNIQUE_KEY:
+            sql = """
+                select user_tab_cols.COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION,
+                NULLABLE, CONSTRAINT_TYPE from user_tab_cols
+            left join(
+                select user_cons_columns.TABLE_NAME, user_cons_columns.COLUMN_NAME,
+                    user_constraints.CONSTRAINT_TYPE,user_cons_columns.POSITION
+                from user_cons_columns
+                left join (select * from user_constraints where CONSTRAINT_TYPE='U' and rownum=1)
+                    user_constraints
+                    on user_constraints.CONSTRAINT_TYPE = 'U'
+                    and user_constraints.TABLE_NAME = user_cons_columns.TABLE_NAME
+                    and user_constraints.CONSTRAINT_NAME = user_cons_columns.CONSTRAINT_NAME
+                where user_cons_columns.TABLE_NAME = '%(TableName)s'
+                ) key_columns
+                on user_tab_cols.TABLE_NAME = key_columns.TABLE_NAME
+                and user_tab_cols.COLUMN_NAME = key_columns.COLUMN_NAME
+                and key_columns.CONSTRAINT_TYPE = 'U'
+            where user_tab_cols.TABLE_NAME = '%(TableName)s'
+            """
+            sql = sql % {"TableName": tablename}
+        else:
+            raise Exception('Key type not supported %s '% key_type)
         cursor = self.execute_sql(sql, None)
         fields = []
         for row in cursor:
@@ -92,13 +172,14 @@ class OracleContext(DbContext):
                      'Key' : row[5]
                      }
             fields.append(self.load_field_info(field_info))
+        if len(fields)==0:
+            raise Exception("Table does not exist.")
         return fields
 
     def load_field_info(self, field_info):
         field_datatype = field_info["Type"]
         is_key = field_info['Key'] in ('P', 'U')
         field_name = field_info['Field']
-        field_length = 0
         if field_datatype == "NUMBER" and (field_info['Precision'] == 0 or field_info['Precision'] == None):
             return IntField(field_name, is_key=is_key)
         elif field_datatype == 'NUMBER' and field_info['Precision'] > 0:
@@ -116,7 +197,7 @@ class OracleContext(DbContext):
         elif field_datatype == 'CLOB':
             return StringField(field_name, is_key=is_key)
         elif field_datatype == 'DATE':
-            return DateField(field_name, is_key=is_key)
+            return DatetimeField(field_name, is_key=is_key)
         else:
             raise Exception('Unsupportted type ' + field_datatype)
                 
@@ -125,67 +206,65 @@ class OracleContext(DbContext):
         for field in fields:
             field_dict[field.name] = field
         self._metadata[tablename] = field_dict
+        self._meta.add_table(Table(tablename, fields))
         return field_dict
         
     def save_or_update(self, tablename, data):
-        table_metadata = self._metadata[tablename]
-        key_fields = []
-        for field in table_metadata.values():
-            if field.is_key:
-                key_fields.append(field)
-               
-        key_signed = False  # find whether key field is specified in data 
+        table = self._meta[tablename]
+        key_fields = [field for field in table.fields if field.is_key]
+        key_signed = False  # find whether key field is specified in data
+        row = Row(table, data)
         for key_field in key_fields:
-            if key_field.name in data.keys():
+            if row[key_field.name]:
                 key_signed = True
-                
+
+        logger.debug(data)
         if key_signed:
             if self.exists_key(tablename, data):
                 return self.update(tablename, data)
-        
-        return self.save(tablename, data)
+        else:
+            raise TableKeyNotSpecified()
+
+        return self._save(tablename, data)
+
+    def _rows_as_dicts(self, cursor):
+        """ returns cx_Oracle rows as dicts """
+        colnames = [i[0] for i in cursor.description]
+        for row in cursor:
+            yield dict(zip(colnames, row))
     
-    def get(self, tablename, keys = None):
+    def get(self, tablename, keys):
         sql = 'select '
-        table_metadata = self._metadata[tablename]
-        sql_field = ','.join([field for field in table_metadata])
+        table = self._meta[tablename]
+        sql_field = ','.join([field.name for field in table.fields])
         sql += sql_field + ' from ' + tablename
-        key_fields = []
-        for field in table_metadata.values():
-            if field.is_key:
-                key_fields.append(field)
+        key_fields = [field for field in table.fields if field.is_key]
+        key_row = Row(table, keys)
         
-        if keys is not None:
-            key_values = ((key.name, self.dialect.format_value_string(key, keys[key.name]) ) for key in key_fields)
-            key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
-            sql += ' where ' + key_condition
-        
-        logger.debug(sql)
-        ret = []
-        for row in self.execute_sql(sql, keys):
-            data_row = {}
-            for i in range(len(table_metadata)):
-                data_row[table_metadata.keys()[i]] = row[i]
-            ret.append(data_row)
-        if len(ret) == 0:
+        key_condition = ' and '.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
+        sql += ' where ' + key_condition
+
+        cursor = self.execute_sql(sql, keys)
+        results = list(self._rows_as_dicts(cursor))
+        if len(results) == 0:
             return None
-        if len(ret) > 1:
-            logger.warn('get fetched more than one records, returning the first one')
-        return ret[0]
+        if len(results) ==1:
+            return Row(table, results[0])
+        else:
+            raise Exception("More than one rows with the key fetched")
     
     def exists_key(self, tablename, keys):
         sql = 'select count(*)'
-        table_metadata = self._metadata[tablename]
+        table = self._meta[tablename]
         sql += ' from ' + tablename + ''
-        key_fields = filter(lambda x: x.is_key, table_metadata.values())
+        key_fields = [field for field in table.fields if field.is_key]
         
-        if keys is not None:
-            key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
-            sql += ' where ' + key_condition
+        key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
+        sql += ' where ' + key_condition
+
+        keys = CaseInsensitiveDict(keys)
         
-        logger.debug(sql)
         params = dict([(key.name, keys[key.name]) for key in key_fields])
-        logger.debug(params)
         cursor = self.execute_sql(sql, params)
         ret = cursor.fetchone()
         if ret[0] > 0:
@@ -219,24 +298,3 @@ class OracleContext(DbContext):
 
     def close(self):
         self._context.close()
-    
-class OracleDialect(Dialect):
-    def format_value_string(self, field, value):
-        if isinstance(field, StringField):
-            return '\'' + value.replace('\'', '\'\'') + '\''
-        if isinstance(field, IntField):
-            return int(value)
-        if isinstance(field, DatetimeField):
-            if isinstance(value, datetime.datetime):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy-mm-dd hh24:mi:ss')"
-            if isinstance(value, datetime.date):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d %H:%M:%S') + "','yyyy-mm-dd hh24:mi:ss')"
-            return "TO_DATE(\'" + str(value) + "\', 'yyyy/mm/dd hh24:mi:ss')"
-        if isinstance(field, DateField):
-            if isinstance(value, datetime.datetime):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d') + "','yyyy-mm-dd')"
-            if isinstance(value, datetime.date):
-                return "TO_DATE('" + value.strftime('%Y-%m-%d') + "','yyyy-mm-dd')"
-            return "TO_DATE(\'" + str(value) + "\', 'yyyy/mm/dd hh24:mi:ss')"
-        return str(value)
-        
