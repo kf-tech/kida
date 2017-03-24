@@ -53,11 +53,11 @@ class OracleContext(DbContext):
     '''
     
 
-    def __init__(self, dburl=None, user=None, password=None, host=None, port=None, sid=None, service_name=None, **kwargs):
+    def __init__(self, dburl=None, meta=None, user=None, password=None, host=None, port=None, sid=None, service_name=None, **kwargs):
         '''
         Constructor
         '''
-        super(OracleContext, self).__init__()
+        super(OracleContext, self).__init__(meta)
 
         params = {}
         if dburl is not None:

@@ -43,6 +43,7 @@ class Meta:
         for table in self.__tables:
             if table.tablename.lower() == table_name.lower():
                 return table
+        raise KeyError('table not exists')
 
 
 class Row(object):

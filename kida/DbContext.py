@@ -26,11 +26,13 @@ class DbContext(object):
     classdocs
     '''
 
-    def __init__(self):
+    def __init__(self, meta=None):
         '''
         Constructor
         '''
-        self._meta = Meta()
+        if meta is None:
+            meta = Meta()
+        self._meta = meta
 
     def save(self, tablename, row):
         pass

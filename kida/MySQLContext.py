@@ -17,12 +17,12 @@ class MySQLContext(DbContext):
     classdocs
     '''
 
-    def __init__(self, dburl=None, user=None, passwd=None, *args, **kwargs):
+    def __init__(self, dburl=None, meta=None, user=None, passwd=None, *args, **kwargs):
         '''
         Constructor
         '''
         import MySQLdb
-        super(MySQLContext, self).__init__()
+        super(MySQLContext, self).__init__(meta)
 
         if dburl is not None and isinstance(dburl, dict):
             params = dburl.copy()
