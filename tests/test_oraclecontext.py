@@ -1,11 +1,8 @@
-'''
-
-'''
 import unittest
-import PyDB
+import kida
 import logging
 import datetime
-from PyDB.exceptions import *
+from kida.exceptions import *
 
 manager_dburl = 'oracle://sys:Welcome01@10.10.10.5/test.oracle.com'
 test_dburl = 'oracle://pydb_test:testing@10.10.10.5/test.oracle.com'
@@ -39,7 +36,7 @@ sql_create_users = '''
 
 def setup_module():
     import cx_Oracle
-    sys_maanger_context = PyDB.OracleContext(manager_dburl, mode=cx_Oracle.SYSDBA)
+    sys_maanger_context = kida.OracleContext(manager_dburl, mode=cx_Oracle.SYSDBA)
     try:
         sys_maanger_context.execute_sql("drop user pydb_test cascade")
     except:
@@ -55,7 +52,7 @@ def setup_module():
 
 def teardown_module():
     import cx_Oracle
-    sys_maanger_context = PyDB.OracleContext(manager_dburl, mode=cx_Oracle.SYSDBA)
+    sys_maanger_context = kida.OracleContext(manager_dburl, mode=cx_Oracle.SYSDBA)
     sys_maanger_context.execute_sql('drop user pydb_test cascade')
     sys_maanger_context.close()
 
@@ -64,9 +61,10 @@ def teardown_module():
 #@unittest.skip
 class Test(unittest.TestCase):
     def setUp(self):
-        self.target = PyDB.OracleContext(test_dburl)
+        self.target = kida.OracleContext(test_dburl)
         self.target.execute_sql('delete from table1')
-        logging.basicConfig(level=logging.DEBUG)
+        self.target.execute_sql('delete from table2')
+        self.target.execute_sql('delete from users')
 
     def tearDown(self):
         self.target.close()
@@ -76,16 +74,19 @@ class Test(unittest.TestCase):
         context = self.target
         fields = context.load_metadata("TABLE1")
         
-        for field in fields:
-            print field
+        self.assertEqual(len(fields), 6)
+        self.assertEqual(fields[0].name, 'ID')
+        self.assertEqual(type(fields[0]), kida.IntField)
+        self.assertEqual(fields[1].name, 'FINT')
+        self.assertEqual(type(fields[1]), kida.IntField)
 
     def test_save(self):
         context = self.target
         tablename = 'table1'
         context.set_metadata(tablename, [
-            PyDB.IntField("id", is_key=True),
-            PyDB.StringField("fstr"),
-            PyDB.IntField("fint")
+            kida.IntField("id", is_key=True),
+            kida.StringField("fstr"),
+            kida.IntField("fint")
         ])
 
         data = {"id": 1, "fint": 1, "fstr": 'abc'}
@@ -103,9 +104,9 @@ class Test(unittest.TestCase):
         tablename = 'table1'
         tablename_upper = 'TABLE1'
         context.set_metadata(tablename, [
-            PyDB.IntField("id", is_key=True),
-            PyDB.StringField("fstr"),
-            PyDB.IntField("fint")
+            kida.IntField("id", is_key=True),
+            kida.StringField("fstr"),
+            kida.IntField("fint")
         ])
 
         data = {"id": 1, "fint": 1, "fstr": 'abc'}
@@ -123,9 +124,9 @@ class Test(unittest.TestCase):
         tablename = 'table1'
         tablename_upper = 'TABLE1'
         context.set_metadata(tablename, [
-            PyDB.IntField("id", is_key=True),
-            PyDB.StringField("fstr"),
-            PyDB.IntField("fint")
+            kida.IntField("id", is_key=True),
+            kida.StringField("fstr"),
+            kida.IntField("fint")
         ])
 
         data = {"ID": 1, "FINT": 1, "FSTR": 'abc'}
@@ -142,9 +143,9 @@ class Test(unittest.TestCase):
         context = self.target
         tablename = 'table1'
         context.set_metadata(tablename, [
-            PyDB.IntField("id", is_key=True),
-            PyDB.StringField("fstr"),
-            PyDB.IntField("fint")
+            kida.IntField("id", is_key=True),
+            kida.StringField("fstr"),
+            kida.IntField("fint")
         ])
 
         data = {"id": 1, "fint": 1, "fstr": 'abc'}
@@ -163,9 +164,9 @@ class Test(unittest.TestCase):
         context = self.target
         tablename = 'table1'
         context.set_metadata(tablename, [
-            PyDB.IntField("id", is_key=True),
-            PyDB.StringField("fstr"),
-            PyDB.IntField("fint")
+            kida.IntField("id", is_key=True),
+            kida.StringField("fstr"),
+            kida.IntField("fint")
         ])
 
         data = {"id": 1, "fint": 1, "fstr": 'abc'}
@@ -184,7 +185,7 @@ class Test(unittest.TestCase):
     def test_set_metadata(self):
         context = self.target
         context.set_metadata("table1", [
-                                        PyDB.IntField("id", is_key = True)
+                                        kida.IntField("id", is_key = True)
                                         ])
         data = {"id": 1, "fielda" : 'a'}
         tablename = 'table1'
@@ -197,41 +198,41 @@ class Test(unittest.TestCase):
 
         self.assertEqual('ID', fields[0].name)
         self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), PyDB.IntField)
+        self.assertEqual(type(fields[0]), kida.IntField)
 
         self.assertEqual('FLONG', fields[1].name)
         self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), PyDB.DecimalField)
+        self.assertEqual(type(fields[1]), kida.DecimalField)
 
         self.assertEqual('FINT', fields[2].name)
         self.assertFalse(fields[2].is_key)
-        self.assertEqual(type(fields[2]), PyDB.IntField)
+        self.assertEqual(type(fields[2]), kida.IntField)
 
         self.assertEqual('FDATETIME', fields[3].name)
         self.assertFalse(fields[3].is_key)
-        self.assertEqual(type(fields[3]), PyDB.DatetimeField)
+        self.assertEqual(type(fields[3]), kida.DatetimeField)
 
         self.assertEqual('FSTR', fields[4].name)
         self.assertFalse(fields[4].is_key)
-        self.assertEqual(type(fields[4]), PyDB.StringField)
+        self.assertEqual(type(fields[4]), kida.StringField)
 
         self.assertEqual('FDATE', fields[5].name)
         self.assertFalse(fields[5].is_key)
-        self.assertEqual(type(fields[5]), PyDB.DatetimeField)
+        self.assertEqual(type(fields[5]), kida.DatetimeField)
 
     def test_load_metadata_uniquekey(self):
         context = self.target
-        fields = context.load_metadata('users', key_type=PyDB.KEY_TYPE_UNIQUE_KEY)
+        fields = context.load_metadata('users', key_type=kida.KEY_TYPE_UNIQUE_KEY)
         self.assertEqual(len(fields), 2)
 
         # keys go first
         self.assertEqual('USERNAME', fields[0].name)
         self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), PyDB.StringField)
+        self.assertEqual(type(fields[0]), kida.StringField)
 
         self.assertEqual('ID', fields[1].name)
         self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), PyDB.IntField)
+        self.assertEqual(type(fields[1]), kida.IntField)
 
     def test_load_metadata2(self):
         context = self.target

@@ -1,11 +1,11 @@
 import unittest
-import PyDB
+import kida
 import logging
-from PyDB.exceptions import *
+from kida.exceptions import *
 import datetime
 
 def setup_module():
-    context = PyDB.MySQLContext(user='root', host='localhost')
+    context = kida.MySQLContext(user='root', host='localhost')
     context.execute_sql('create database pydb_test')
     context.execute_sql('use pydb_test')
     context.execute_sql("create user 'pydb_test'@'localhost' IDENTIFIED BY 'password'")
@@ -42,7 +42,7 @@ CREATE TABLE `table1` (
     logging.debug('setup module')
 
 def teardown_module():
-    context = PyDB.MySQLContext({'user':'root', 'host':'localhost', 'db':'pydb_test'})
+    context = kida.MySQLContext({'user': 'root', 'host': 'localhost', 'db': 'pydb_test'})
     context.execute_sql('drop database pydb_test')
     context.execute_sql("drop user pydb_test@'localhost'")
     context.close()
@@ -51,7 +51,7 @@ def teardown_module():
 
 class Test(unittest.TestCase):
     def setUp(self):
-        self.target = PyDB.MySQLContext({'user':'pydb_test', 'host':'localhost', 'passwd': 'password', 'db':'pydb_test'})
+        self.target = kida.MySQLContext({'user': 'pydb_test', 'host': 'localhost', 'passwd': 'password', 'db': 'pydb_test'})
         logging.debug('setUp')
         self.target.execute_sql('delete from table1')
         self.target.execute_sql('delete from table2')
@@ -91,9 +91,9 @@ CREATE TABLE `table1` (
         context = self.target
         tablename = 'table1'
         context.set_metadata(tablename, [
-                                       PyDB.IntField("id", is_key=True),
-                                       PyDB.StringField("fstr"),
-                                       PyDB.IntField("fint")
+                                       kida.IntField("id", is_key=True),
+                                       kida.StringField("fstr"),
+                                       kida.IntField("fint")
                                        ])
         
         data = {"id" : 1, "fint": 1, "fstr": 'abc'}
@@ -111,9 +111,9 @@ CREATE TABLE `table1` (
         tablename = 'table1'
         tablename_upper = 'TABLE1'
         context.set_metadata(tablename, [
-            PyDB.IntField("id", is_key=True),
-            PyDB.StringField("fstr"),
-            PyDB.IntField("fint")
+            kida.IntField("id", is_key=True),
+            kida.StringField("fstr"),
+            kida.IntField("fint")
         ])
 
         data = {"id": 1, "fint": 1, "fstr": 'abc'}
@@ -130,9 +130,9 @@ CREATE TABLE `table1` (
         context = self.target
         tablename = 'table1'
         context.set_metadata(tablename, [
-            PyDB.IntField("id", is_key=True),
-            PyDB.StringField("fstr"),
-            PyDB.IntField("fint")
+            kida.IntField("id", is_key=True),
+            kida.StringField("fstr"),
+            kida.IntField("fint")
         ])
 
         data = {"id": 1, "fint": 1, "fstr": 'abc'}
@@ -151,7 +151,7 @@ CREATE TABLE `table1` (
     def test_set_metadata(self):
         context = self.target
         context.set_metadata("table1", [
-                                        PyDB.IntField("id", is_key = True)
+                                        kida.IntField("id", is_key = True)
                                         ])
         data = {"id": 1, "fielda" : 'a'}
         tablename = 'table1'
@@ -164,41 +164,41 @@ CREATE TABLE `table1` (
 
         self.assertEqual('id', fields[0].name)
         self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), PyDB.IntField)
+        self.assertEqual(type(fields[0]), kida.IntField)
 
         self.assertEqual('fint', fields[1].name)
         self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), PyDB.IntField)
+        self.assertEqual(type(fields[1]), kida.IntField)
 
         self.assertEqual('fstr', fields[2].name)
         self.assertFalse(fields[2].is_key)
-        self.assertEqual(type(fields[2]), PyDB.StringField)
+        self.assertEqual(type(fields[2]), kida.StringField)
 
         self.assertEqual('flong', fields[3].name)
         self.assertFalse(fields[3].is_key)
-        self.assertEqual(type(fields[3]), PyDB.IntField)
+        self.assertEqual(type(fields[3]), kida.IntField)
 
         self.assertEqual('fdate', fields[4].name)
         self.assertFalse(fields[4].is_key)
-        self.assertEqual(type(fields[4]), PyDB.DateField)
+        self.assertEqual(type(fields[4]), kida.DateField)
 
         self.assertEqual('fdatetime', fields[5].name)
         self.assertFalse(fields[5].is_key)
-        self.assertEqual(type(fields[5]), PyDB.DatetimeField)
+        self.assertEqual(type(fields[5]), kida.DatetimeField)
 
     def test_load_metadata_default_uniquekey(self):
         context = self.target
-        fields = context.load_metadata('users', key_type=PyDB.KEY_TYPE_UNIQUE_KEY)
+        fields = context.load_metadata('users', key_type=kida.KEY_TYPE_UNIQUE_KEY)
         self.assertEqual(len(fields), 2)
 
         # keys go first
         self.assertEqual('username', fields[0].name)
         self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), PyDB.StringField)
+        self.assertEqual(type(fields[0]), kida.StringField)
 
         self.assertEqual('id', fields[1].name)
         self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), PyDB.IntField)
+        self.assertEqual(type(fields[1]), kida.IntField)
 
             
     def test_load_metadata2(self):
@@ -318,25 +318,25 @@ CREATE TABLE `table1` (
 class DBConnectionTest(unittest.TestCase):
     def test_connect_by_url(self):
         dburl = 'mysql://pydb_test:password@localhost/pydb_test'
-        db_context = PyDB.MySQLContext(dburl)
+        db_context = kida.MySQLContext(dburl)
         db_context.close()
 
     def test_connect_by_url_plus_user(self):
         dburl = 'mysql://localhost/pydb_test'
-        db_context = PyDB.MySQLContext(dburl, user='pydb_test', passwd='password')
+        db_context = kida.MySQLContext(dburl, user='pydb_test', passwd='password')
         db_context.close()
 
     def test_connect_by_url_no_username(self):
         dburl = 'mysql://root@localhost/pydb_test'
-        db_context = PyDB.MySQLContext(dburl)
+        db_context = kida.MySQLContext(dburl)
         db_context.close()
 
     def test_connect_by_dict(self):
         params = {'user': 'pydb_test', 'passwd':'password', 'host': 'localhost', 'db': 'pydb_test'}
-        db_context = PyDB.MySQLContext(params)
+        db_context = kida.MySQLContext(params)
         db_context.close()
 
     def test_connect_by_kwargs(self):
-        db_context = PyDB.MySQLContext(user='root', host='localhost', port=3306, db='pydb_test')
+        db_context = kida.MySQLContext(user='root', host='localhost', port=3306, db='pydb_test')
         db_context.close()
 
