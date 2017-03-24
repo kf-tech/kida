@@ -139,12 +139,12 @@ class MySQLContext(DbContext):
         key_fields = [field for field in table.fields if field.is_key]
         
         if keys is not None:
-            key_condition = 'and'.join([' %s = %s ' % (key.name, self.dialect.format_value_string(key, keys[key.name]) ) for key in key_fields])
+            key_condition = 'and'.join([' {0} = %({0})s '.format(key.name) for key in key_fields])
             sql += ' where ' + key_condition
 
         logger.debug(sql)
 
-        cursor = self.execute_sql(sql, dict_cursor=True)
+        cursor = self.execute_sql(sql, keys, dict_cursor=True)
         results = cursor.fetchall()
         if len(results) == 0:
             return None

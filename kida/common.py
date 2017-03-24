@@ -37,7 +37,7 @@ class TableCollection:
         if not isinstance(item, basestring):
             raise Exception('__contains__ requires a string argument')
         for c in self._tables:
-            if c.name == item:
+            if c.tablename == item:
                 return True
 
         return False
