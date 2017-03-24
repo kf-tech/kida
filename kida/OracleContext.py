@@ -119,7 +119,7 @@ class OracleContext(DbContext):
     def save(self, tablename, data):
         self.save_or_update(tablename, data)
     
-    def load_metadata(self, tablename, auto_fill=False, key_type=KEY_TYPE_PRIMARY):
+    def load_table_metadata(self, tablename, auto_fill=False, key_type=KEY_TYPE_PRIMARY):
         tablename = tablename.upper()
         if key_type == KEY_TYPE_PRIMARY:
             sql = """

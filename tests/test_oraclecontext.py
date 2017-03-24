@@ -58,7 +58,7 @@ def teardown_module():
 
 
 
-@unittest.skip
+#@unittest.skip
 class Test(unittest.TestCase):
     def setUp(self):
         self.target = kida.OracleContext(test_dburl)
@@ -72,13 +72,14 @@ class Test(unittest.TestCase):
 
     def test_load_metadata(self):
         context = self.target
-        fields = context.load_metadata("TABLE1")
-        
-        self.assertEqual(len(fields), 6)
-        self.assertEqual(fields[0].name, 'ID')
-        self.assertEqual(type(fields[0]), kida.IntField)
-        self.assertEqual(fields[1].name, 'FINT')
-        self.assertEqual(type(fields[1]), kida.IntField)
+        table= context.load_metadata("TABLE1")
+        columns = table.columns
+
+        self.assertEqual(len(columns), 6)
+        self.assertTrue('ID' in columns)
+        self.assertEqual(type(columns['ID']), kida.IntField)
+        self.assertTrue('FINT' in columns)
+        self.assertEqual(type(columns['FINT']), kida.IntField)
 
     def test_save(self):
         context = self.target
@@ -193,60 +194,59 @@ class Test(unittest.TestCase):
 
     def test_load_metadata_default_primarykey(self):
         context = self.target
-        fields = context.load_metadata('table1')
-        self.assertEqual(len(fields), 6)
+        table = context.load_metadata('table1')
+        columns = table.columns
+        self.assertEqual(len(columns), 6)
 
-        self.assertEqual('ID', fields[0].name)
-        self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), kida.IntField)
+        self.assertTrue('id' in columns)
+        self.assertTrue(columns['id'].is_key)
+        self.assertEqual(type(columns['id']), kida.IntField)
 
-        self.assertEqual('FLONG', fields[1].name)
-        self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), kida.DecimalField)
+        self.assertTrue('fint' in columns)
+        self.assertFalse(columns['fint'].is_key)
+        self.assertEqual(type(columns['fint']), kida.IntField)
 
-        self.assertEqual('FINT', fields[2].name)
-        self.assertFalse(fields[2].is_key)
-        self.assertEqual(type(fields[2]), kida.IntField)
+        self.assertTrue('fstr' in columns)
+        self.assertFalse(columns['fstr'].is_key)
+        self.assertEqual(type(columns['fstr']), kida.StringField)
 
-        self.assertEqual('FDATETIME', fields[3].name)
-        self.assertFalse(fields[3].is_key)
-        self.assertEqual(type(fields[3]), kida.DatetimeField)
+        self.assertTrue('flong' in columns)
+        self.assertFalse(columns['flong'].is_key)
+        self.assertEqual(type(columns['flong']), kida.DecimalField)
 
-        self.assertEqual('FSTR', fields[4].name)
-        self.assertFalse(fields[4].is_key)
-        self.assertEqual(type(fields[4]), kida.StringField)
+        self.assertTrue('fdate' in columns)
+        self.assertFalse(columns['fdate'].is_key)
+        self.assertEqual(type(columns['fdate']), kida.DatetimeField)
 
-        self.assertEqual('FDATE', fields[5].name)
-        self.assertFalse(fields[5].is_key)
-        self.assertEqual(type(fields[5]), kida.DatetimeField)
+        self.assertTrue('fdatetime' in columns)
+        self.assertFalse(columns['fdatetime'].is_key)
+        self.assertEqual(type(columns['fdatetime']), kida.DatetimeField)
 
     def test_load_metadata_uniquekey(self):
         context = self.target
-        fields = context.load_metadata('users', key_type=kida.KEY_TYPE_UNIQUE_KEY)
-        self.assertEqual(len(fields), 2)
+        table = context.load_metadata('users', key_type=kida.KEY_TYPE_UNIQUE_KEY)
+        columns = table.columns
+        self.assertEqual(len(columns), 2)
 
         # keys go first
-        self.assertEqual('USERNAME', fields[0].name)
-        self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), kida.StringField)
+        self.assertEqual('USERNAME', columns[0].name)
+        self.assertTrue(columns[0].is_key)
+        self.assertEqual(type(columns[0]), kida.StringField)
 
-        self.assertEqual('ID', fields[1].name)
-        self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), kida.IntField)
+        self.assertEqual('ID', columns[1].name)
+        self.assertFalse(columns[1].is_key)
+        self.assertEqual(type(columns[1]), kida.IntField)
 
     def test_load_metadata2(self):
         context = self.target
-        fields = context.load_metadata('table1')
-        fields = context.set_metadata('table1', fields)
-        for field in fields.values():
-            print field
-
-        self.assertTrue(fields['ID'].is_key)
+        table = context.load_metadata('table1')
+        columns = table.columns
+        self.assertTrue(columns['id'].is_key)
 
     def test_save2(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         data = {"fint": 1, "fstr": 'ab\'c'}
         try:
             context.save(tablename, data)
@@ -266,7 +266,7 @@ class Test(unittest.TestCase):
     def test_save_or_update(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         data = {
                 "id" : 1,
                 "fint": 2,
@@ -279,7 +279,7 @@ class Test(unittest.TestCase):
     def test_get_1(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         id = 1
         data = {'id':id}
         context.save(tablename, data)
@@ -290,7 +290,7 @@ class Test(unittest.TestCase):
     def test_save_10000_batch(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         rows = []
         for i in xrange(10000):
             data = {'id': i, "fint": 1, "fstr": 'ab\'c'}
@@ -302,7 +302,7 @@ class Test(unittest.TestCase):
         tablename = 'table2'
         keys = {'k1' : 1, 'k2' : 2}
 
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         context.save(tablename, keys)
         self.assertTrue(context.exists_key(tablename, keys))
 

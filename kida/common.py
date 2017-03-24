@@ -14,14 +14,14 @@ class ColumnCollection:
             return self._all_columns[item]
         elif isinstance(item, basestring):
             for c in self._all_columns:
-                if c.name == item:
+                if c.name.lower() == item.lower():
                     return c
 
     def __contains__(self, item):
         if not isinstance(item, basestring):
             raise Exception('__contains__ requires a string argument')
         for c in self._all_columns:
-            if c.name == item:
+            if c.name.lower() == item.lower():
                 return True
 
         return False
