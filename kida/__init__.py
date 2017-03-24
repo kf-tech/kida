@@ -1,4 +1,4 @@
-__version__ = '0.0.9'
+__version__ = '0.1.0'
 
 from .DbContext import DbContext, create_context
 from .MySQLContext import MySQLContext
