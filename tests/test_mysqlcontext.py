@@ -3,13 +3,23 @@ import kida
 import logging
 from kida.exceptions import *
 import datetime
+from nose.tools import *
+
+db_host = 'localhost'
+manager_username = 'root'
+manager_password = ''
+test_username = 'pydb_test'
+test_password = 'password'
+test_db = 'pydb_test'
+manager_dburl = 'mysql://root@localhost'
+target_dburl = 'mysql://%s:%s@%s/%s' % (test_username, test_password, db_host, test_db)
 
 def setup_module():
-    context = kida.MySQLContext(user='root', host='localhost')
-    context.execute_sql('create database pydb_test')
-    context.execute_sql('use pydb_test')
-    context.execute_sql("create user 'pydb_test'@'localhost' IDENTIFIED BY 'password'")
-    context.execute_sql("GRANT ALL ON pydb_test.* TO 'pydb_test'@'localhost';")
+    context = kida.MySQLContext(user=manager_username, host=db_host)
+    context.execute_sql('create database %s' % test_db)
+    context.execute_sql('use %s' % test_db)
+    context.execute_sql("create user '%s'@'localhost' IDENTIFIED BY '%s'" % (test_username, test_password))
+    context.execute_sql("GRANT ALL ON %s.* TO '%s'@'localhost';" % (test_db, test_username))
 
     context.execute_sql(        """
 CREATE TABLE `table1` (
@@ -51,7 +61,7 @@ def teardown_module():
 
 class Test(unittest.TestCase):
     def setUp(self):
-        self.target = kida.MySQLContext({'user': 'pydb_test', 'host': 'localhost', 'passwd': 'password', 'db': 'pydb_test'})
+        self.target = kida.MySQLContext(dburl=target_dburl)
         logging.debug('setUp')
         self.target.execute_sql('delete from table1')
         self.target.execute_sql('delete from table2')
@@ -121,7 +131,7 @@ CREATE TABLE `table1` (
         context.commit()
 
         row = context.get(tablename_upper, {'id': 1})
-        logging.debug(row)
+        logging.debug(row);
         self.assertIsNotNone(row)
         self.assertEqual(row['fstr'], 'abc')
         self.assertEqual(row['fint'], 1)
@@ -159,61 +169,60 @@ CREATE TABLE `table1` (
         
     def test_load_metadata_default_primarykey(self):
         context = self.target
-        fields = context.load_metadata('table1')
-        self.assertEqual(len(fields), 6)
+        table = context.load_metadata('table1')
+        columns = table.columns
+        self.assertEqual(len(columns), 6)
 
-        self.assertEqual('id', fields[0].name)
-        self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), kida.IntField)
+        self.assertEqual('id', columns[0].name)
+        self.assertTrue(columns[0].is_key)
+        self.assertEqual(type(columns[0]), kida.IntField)
 
-        self.assertEqual('fint', fields[1].name)
-        self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), kida.IntField)
+        self.assertEqual('fint', columns[1].name)
+        self.assertFalse(columns[1].is_key)
+        self.assertEqual(type(columns[1]), kida.IntField)
 
-        self.assertEqual('fstr', fields[2].name)
-        self.assertFalse(fields[2].is_key)
-        self.assertEqual(type(fields[2]), kida.StringField)
+        self.assertEqual('fstr', columns[2].name)
+        self.assertFalse(columns[2].is_key)
+        self.assertEqual(type(columns[2]), kida.StringField)
 
-        self.assertEqual('flong', fields[3].name)
-        self.assertFalse(fields[3].is_key)
-        self.assertEqual(type(fields[3]), kida.IntField)
+        self.assertEqual('flong', columns[3].name)
+        self.assertFalse(columns[3].is_key)
+        self.assertEqual(type(columns[3]), kida.IntField)
 
-        self.assertEqual('fdate', fields[4].name)
-        self.assertFalse(fields[4].is_key)
-        self.assertEqual(type(fields[4]), kida.DateField)
+        self.assertEqual('fdate', columns[4].name)
+        self.assertFalse(columns[4].is_key)
+        self.assertEqual(type(columns[4]), kida.DateField)
 
-        self.assertEqual('fdatetime', fields[5].name)
-        self.assertFalse(fields[5].is_key)
-        self.assertEqual(type(fields[5]), kida.DatetimeField)
+        self.assertEqual('fdatetime', columns[5].name)
+        self.assertFalse(columns[5].is_key)
+        self.assertEqual(type(columns[5]), kida.DatetimeField)
 
     def test_load_metadata_default_uniquekey(self):
         context = self.target
-        fields = context.load_metadata('users', key_type=kida.KEY_TYPE_UNIQUE_KEY)
-        self.assertEqual(len(fields), 2)
+        table = context.load_metadata('users', key_type=kida.KEY_TYPE_UNIQUE_KEY)
+        columns = table.columns
+        self.assertEqual(len(columns), 2)
 
         # keys go first
-        self.assertEqual('username', fields[0].name)
-        self.assertTrue(fields[0].is_key)
-        self.assertEqual(type(fields[0]), kida.StringField)
+        self.assertEqual('username', columns[0].name)
+        self.assertTrue(columns[0].is_key)
+        self.assertEqual(type(columns[0]), kida.StringField)
 
-        self.assertEqual('id', fields[1].name)
-        self.assertFalse(fields[1].is_key)
-        self.assertEqual(type(fields[1]), kida.IntField)
+        self.assertEqual('id', columns[1].name)
+        self.assertFalse(columns[1].is_key)
+        self.assertEqual(type(columns[1]), kida.IntField)
 
             
     def test_load_metadata2(self):
         context = self.target
-        fields = context.load_metadata('table1')
-        fields = context.set_metadata('table1', fields)
-        for field in fields.values():
-            print field
-        
-        self.assertTrue(fields['id'].is_key)
+        table = context.load_metadata('table1')
+        columns = table.columns
+        self.assertTrue(columns['id'].is_key)
             
     def test_save2(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        context.load_metadata(tablename)
         data = {"fint": 1, "fstr": 'ab\'c'}
         try:
             context.save(tablename, data)
@@ -234,7 +243,7 @@ CREATE TABLE `table1` (
     def test_save_or_update(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        context.load_metadata(tablename)
         data = {
                 "id" : 1, 
                 "fint": 2, 
@@ -247,7 +256,7 @@ CREATE TABLE `table1` (
     def test_get_1(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         id = 1
         data = {'id':id}
         context.save(tablename, data)
@@ -260,7 +269,7 @@ CREATE TABLE `table1` (
     def test_save_10000(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        context.load_metadata(tablename)
         for i in xrange(10000):
             data = {'id': i, "fint": 1, "fstr": 'ab\'c'}
             context.save(tablename, data)
@@ -269,7 +278,7 @@ CREATE TABLE `table1` (
     def test_save_10000_batch(self):
         context = self.target
         tablename = 'table1'
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         rows = []
         for i in xrange(10000):
             data = {'id': i, "fint": 1, "fstr": 'ab\'c'}
@@ -283,7 +292,7 @@ CREATE TABLE `table1` (
         context = self.target
         tablename = 'table2'
 
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         list = context._meta[tablename].fields
         self.assertEqual("k2", list[0].name, "The first field should be k2")
         self.assertEqual("k1", list[1].name, "The second field should be k1")
@@ -296,7 +305,7 @@ CREATE TABLE `table1` (
         
         data = {'k1' : 1, 'k2' : 2}
 
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         context.save(tablename, data)
         context.commit()
         
@@ -305,14 +314,33 @@ CREATE TABLE `table1` (
         tablename = 'table2'
         keys = {'k1' : 1, 'k2' : 2}
 
-        context.set_metadata(tablename, context.load_metadata(tablename))
+        tablename, context.load_metadata(tablename)
         context.save(tablename, keys)
         self.assertTrue(context.exists_key(tablename, keys)) 
-    
+
     def test_not_existing_table_metadata(self):
         context = self.target
         tablename = 'table_not_existing'
-        self.assertIsNone(context.load_metadata(tablename), "Metadata should be none")
+        try:
+            context.load_metadata(tablename)
+            self.fail('TableNotExistsError not catched')
+        except TableNotExistError:
+            pass
+
+    def test_external_meta(self):
+        meta = kida.Meta()
+
+        table_name = 'table1'
+        try:
+            self.assertFalse(meta[table_name])
+            self.fail('Table1 should not exists in meta')
+        except TableNotExistError:
+            pass
+
+        self.assertFalse(table_name in meta.tables)
+        target = kida.connect(target_dburl, meta=meta)
+        target.load_metadata(table_name)
+        table = meta[table_name]
 
 
 class DBConnectionTest(unittest.TestCase):

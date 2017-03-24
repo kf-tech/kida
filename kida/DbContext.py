@@ -5,19 +5,20 @@ from kida.fields import IntField, StringField, DatetimeField, DateField
 import datetime
 import urlparse
 from common import Meta, Table
+from exceptions import *
 
 KEY_TYPE_PRIMARY = 1
 KEY_TYPE_UNIQUE_KEY = 2
 KEY_TYPE_UNIQUE_INDEX = 3
 
-def create_context(dburl):
+def create_context(dburl, meta=None):
     from MySQLContext import MySQLContext
     from OracleContext import OracleContext
     urlparts = urlparse.urlparse(dburl)
     if urlparts.scheme == 'mysql':
-        return MySQLContext(dburl)
+        return MySQLContext(dburl, meta=meta)
     elif urlparts.scheme == 'oracle':
-        return OracleContext(dburl)
+        return OracleContext(dburl, meta=meta)
     raise Exception('Not supported database scheme %s' % urlparts.scheme)
 
 
@@ -55,8 +56,16 @@ class DbContext(object):
     def set_metadata(self, tablename, fields):
         pass
 
-    def load_metadata(self, tablename):
+    def load_table_metadata(self, tablename, auto_fill=False, key_type=KEY_TYPE_PRIMARY):
         pass
+
+    def load_metadata(self, tablename, key_type=KEY_TYPE_PRIMARY):
+        fields = self.load_table_metadata(tablename, key_type=key_type)
+        if len(fields) == 0:
+            raise TableNotExistError()
+        table = Table(tablename, fields)
+        self._meta.add_table(table)
+        return table
     
 class Dialect:
     def format_value_string(self, field, value):

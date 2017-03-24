@@ -33,6 +33,7 @@ class MySQLContext(DbContext):
                 params.update(passwd = passwd)
             self.cnx = MySQLdb.connect(**params)
         elif dburl is not None:
+            logger.debug(dburl)
             urlparts = urlparse.urlparse(dburl)
             username = urlparts.username or user
             password = urlparts.password or passwd
@@ -80,8 +81,7 @@ class MySQLContext(DbContext):
         values = ','.join(['%({0})s'.format(field.name) for field in row.values.keys()])
         data = {field.name : value for field, value in row.values.items()}
         sql = 'insert into ' + table.tablename + ' (' + fields + ') values (' + values + ')'
-        logger.debug(sql)
-        return self.execute_sql(sql, data)
+        self.execute_sql(sql, data)
 
     def save(self, tablename, data):
         self.save_or_update(tablename, data)
@@ -179,10 +179,10 @@ class MySQLContext(DbContext):
         sql = 'show tables'
         cursor = self.execute_sql(sql)
         tables = cursor.fetchall()
+        logger.debug(tables)
         tables = {x[0].upper(): x[0] for x in tables}
         if not tables.has_key(tablename.upper()):
-            logger.error("Table '%s' doesn't exist" % tablename)
-            return None
+            raise TableNotExistError
 
         sql = 'show columns from ' + tablename
         cursor = self.execute_sql(sql)
@@ -222,10 +222,6 @@ class MySQLContext(DbContext):
                 field_list[field['Field']] = self.load_field_info(field)
         return field_list.values()
 
-    def load_metadata(self, tablename, key_type=KEY_TYPE_PRIMARY):
-        return self.load_table_metadata(tablename, key_type=key_type)
-
-
     def load_field_info(self, field_info, is_key=False):
         field_datatype = field_info["Type"].split('(')[0]
         if field_datatype == "bigint":
@@ -260,11 +256,14 @@ class MySQLContext(DbContext):
             raise Exception('Unsupportted type ' + field_datatype)
 
     def set_metadata(self, tablename, fields):
-        field_dict = collections.OrderedDict()
-        for field in fields:
-            field_dict[field.name] = field
-        self._meta.add_table(Table(tablename, fields))
-        return field_dict
+        if isinstance(fields, Table):
+            table = fields
+        else:
+            field_dict = collections.OrderedDict()
+            for field in fields:
+                field_dict[field.name] = field
+            table = Table(tablename, fields)
+        self._meta.add_table(table)
 
     def close(self):
         self.cnx.close()
