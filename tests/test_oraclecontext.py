@@ -58,7 +58,7 @@ def teardown_module():
 
 
 
-#@unittest.skip
+@unittest.skip
 class Test(unittest.TestCase):
     def setUp(self):
         self.target = kida.OracleContext(test_dburl)
