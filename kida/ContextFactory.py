@@ -1,6 +1,6 @@
 '''
 '''
-from PyDB.MySQLContext import MySQLContext
+from kida.MySQLContext import MySQLContext
 
 class ContextFactory(object):
     '''

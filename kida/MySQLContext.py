@@ -1,7 +1,7 @@
 '''
 '''
-from PyDB import DbContext
-from PyDB.fields import IntField, StringField, DatetimeField, DateField, DecimalField, BinaryField
+from kida import DbContext
+from kida.fields import IntField, StringField, DatetimeField, DateField, DecimalField, BinaryField
 from DbContext import Dialect, KEY_TYPE_PRIMARY, KEY_TYPE_UNIQUE_INDEX, KEY_TYPE_UNIQUE_KEY
 import logging
 import collections

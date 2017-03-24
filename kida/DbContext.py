@@ -1,7 +1,7 @@
 '''
 
 '''
-from PyDB.fields import IntField, StringField, DatetimeField, DateField
+from kida.fields import IntField, StringField, DatetimeField, DateField
 import datetime
 import urlparse
 from common import Meta, Table
