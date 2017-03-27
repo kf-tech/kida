@@ -64,6 +64,8 @@ class MySQLContext(DbContext):
         import MySQLdb
         from _mysql_exceptions import OperationalError
         logger.debug(sql)
+        if params:
+            logger.debug(params)
         try:
             if dict_cursor:
                 cursor = self.cnx.cursor(MySQLdb.cursors.DictCursor)
@@ -103,10 +105,11 @@ class MySQLContext(DbContext):
     def save_batch(self, tablename, rows):
         self.cnx.autocommit(False)
         for row in rows:
-            if self.get(tablename, row):
-                self.update(tablename, row)
-            else:
-                self._save(tablename, row)
+            #if self.get(tablename, row):
+            #    self.update(tablename, row)
+            #else:
+            #    self._save(tablename, row)
+            self.save_or_update(tablename, row)
 
         self.cnx.commit()
         self.cnx.autocommit(True)
@@ -164,7 +167,6 @@ class MySQLContext(DbContext):
             key_condition = ' and '.join([' {0} = %({0})s '.format(key.name) for key in key_fields])
             sql += ' where ' + key_condition
 
-        logger.debug(sql)
         cursor = self.execute_sql(sql, keys)
         ret = cursor.fetchone()
         if ret[0] > 0:

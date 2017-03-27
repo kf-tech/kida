@@ -275,15 +275,19 @@ CREATE TABLE `table1` (
             context.save(tablename, data)
             context.commit()
 
-    def test_save_10000_batch(self):
+    def test_save_batch(self):
         context = self.target
         tablename = 'table1'
+        count = 10
         tablename, context.load_metadata(tablename)
         rows = []
-        for i in xrange(10000):
+        for i in range(1, count):
             data = {'id': i, "fint": 1, "fstr": 'ab\'c'}
             rows.append(data)
         context.save_batch(tablename, rows)
+
+        for i in range(1, count):
+            self.assertIsNotNone(context.get(tablename, {'id': i}), 'row %s not saved' % i)
 
     
     def test_index_sequence(self):
