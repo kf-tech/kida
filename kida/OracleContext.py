@@ -76,9 +76,11 @@ class OracleContext(DbContext):
             #if urlparts.hostname:
             #    params['host'] = urlparts.hostname
             host = host or urlparts.hostname
-            service_name = service_name or urlparts.path.lstrip('/')
-            for key, values in urlparse.parse_qs(urlparts.query):
+            sid = sid or urlparts.path.lstrip('/')
+            for key, values in urlparse.parse_qs(urlparts.query).items():
                 params[key] = values[0]
+            service_name_in_url = params.pop('service_name') if 'service_name' in params else None
+            service_name = service_name or service_name_in_url
 
         import cx_Oracle
         params.update(kwargs)
@@ -100,10 +102,10 @@ class OracleContext(DbContext):
     def execute_sql(self, sql, params=None):
         cursor = self._cursor
         params = params or {}
-        cursor.execute(sql, params)
         logger.debug(sql)
         if params:
             logger.debug(params)
+        cursor.execute(sql, params)
         return cursor
 
     def _save(self, tablename, data):
@@ -113,11 +115,11 @@ class OracleContext(DbContext):
         values = ','.join([':{0}'.format(field.name) for field in row.values.keys()])
         data = {field.name : value for field, value in row.values.items()}
         sql = 'insert into ' + table.tablename + ' (' + fields + ') values (' + values + ')'
-        logger.debug(sql)
         return self.execute_sql(sql, data)
     
     def save(self, tablename, data):
-        self.save_or_update(tablename, data)
+        self._save_or_update(tablename, data)
+        self._context.commit()
     
     def load_table_metadata(self, tablename, auto_fill=False, key_type=KEY_TYPE_PRIMARY):
         tablename = tablename.upper()
@@ -149,7 +151,9 @@ class OracleContext(DbContext):
                 select user_cons_columns.TABLE_NAME, user_cons_columns.COLUMN_NAME,
                     user_constraints.CONSTRAINT_TYPE,user_cons_columns.POSITION
                 from user_cons_columns
-                left join (select * from user_constraints where CONSTRAINT_TYPE='U' and rownum=1)
+                left join (select * from user_constraints where CONSTRAINT_TYPE='U'
+                    and TABLE_NAME='%(TableName)s'
+                    and rownum=1)
                     user_constraints
                     on user_constraints.CONSTRAINT_TYPE = 'U'
                     and user_constraints.TABLE_NAME = user_cons_columns.TABLE_NAME
@@ -164,7 +168,7 @@ class OracleContext(DbContext):
             sql = sql % {"TableName": tablename}
         else:
             raise Exception('Key type not supported %s '% key_type)
-        cursor = self.execute_sql(sql, None)
+        cursor = self.execute_sql(sql)
         fields = []
         for row in cursor:
             field_info = {
@@ -212,8 +216,8 @@ class OracleContext(DbContext):
         self._metadata[tablename] = field_dict
         self._meta.add_table(Table(tablename, fields))
         return field_dict
-        
-    def save_or_update(self, tablename, data):
+
+    def _save_or_update(self, tablename, data):
         table = self._meta[tablename]
         key_fields = [field for field in table.fields if field.is_key]
         key_signed = False  # find whether key field is specified in data
@@ -222,14 +226,22 @@ class OracleContext(DbContext):
             if row[key_field.name]:
                 key_signed = True
 
-        logger.debug(data)
         if key_signed:
             if self.exists_key(tablename, data):
-                return self.update(tablename, data)
+                return self._update(tablename, data)
         else:
             raise TableKeyNotSpecified()
+        self._save(tablename, data)
+        
+    def save_or_update(self, tablename, data):
+        self._save_or_update(tablename, data)
+        self._context.commit()
 
-        return self._save(tablename, data)
+
+    def save_batch(self, tablename, rows):
+        for row in rows:
+            self._save_or_update(tablename, row)
+        self._context.commit()
 
     def _rows_as_dicts(self, cursor):
         """ returns cx_Oracle rows as dicts """
@@ -261,7 +273,7 @@ class OracleContext(DbContext):
         table = self._meta[tablename]
         sql += ' from ' + tablename + ''
         key_fields = [field for field in table.fields if field.is_key]
-        
+
         key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
         sql += ' where ' + key_condition
 
@@ -274,7 +286,7 @@ class OracleContext(DbContext):
             return True
         return False
     
-    def update(self, tablename, data):
+    def _update(self, tablename, data):
         table = self._meta[tablename]
         key_fields = [field for field in table.fields if field.is_key]
         sql = """update """ + tablename + " set "

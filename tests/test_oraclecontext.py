@@ -4,8 +4,8 @@ import logging
 import datetime
 from kida.exceptions import *
 
-manager_dburl = 'oracle://sys:Welcome01@10.10.10.5/test.oracle.com'
-test_dburl = 'oracle://pydb_test:testing@10.10.10.5/test.oracle.com'
+manager_dburl = 'oracle://sys:Welcome01@10.10.10.5/?service_name=test.oracle.com'
+test_dburl = 'oracle://pydb_test:testing@10.10.10.5/?service_name=test.oracle.com'
 
 sql_create_table1 = '''
 CREATE TABLE pydb_test.table1 (
@@ -287,15 +287,22 @@ class Test(unittest.TestCase):
         logging.debug(row)
         self.assertEqual(id, row['id'], 'Result rows id is not %s' % id)
 
-    def test_save_10000_batch(self):
+    def test_save_batch(self):
         context = self.target
         tablename = 'table1'
+        count = 10
         tablename, context.load_metadata(tablename)
         rows = []
-        for i in xrange(10000):
+        for i in range(1, count):
             data = {'id': i, "fint": 1, "fstr": 'ab\'c'}
             rows.append(data)
         context.save_batch(tablename, rows)
+
+        meta = self.target._meta
+        context = kida.OracleContext(test_dburl, meta=meta)
+        for i in range(1, count):
+            self.assertIsNotNone(context.get(tablename, {'id': i}), 'row %s not saved' % i)
+        context.close()
 
     def test_exists_key(self):
         context = self.target
