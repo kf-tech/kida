@@ -9,6 +9,7 @@ import urlparse
 import os
 from .common import Row, Table, Meta
 from .exceptions import *
+import re
 os.environ["NLS_LANG"] = ".UTF8"
 
 logger = logging.getLogger('PyDB')
@@ -51,7 +52,7 @@ class OracleContext(DbContext):
     '''
     classdocs
     '''
-    
+
 
     def __init__(self, dburl=None, meta=None, user=None, password=None, host=None, port=None, sid=None, service_name=None, **kwargs):
         '''
@@ -98,7 +99,8 @@ class OracleContext(DbContext):
         self._context = cx_Oracle.connect(dsn=dsn, **params)
         self._cursor = self._context.cursor()
         self._cursor.execute("ALTER SESSION  SET NLS_DATE_FORMAT='YYYY-MM-DD'")
-        
+        self._dialect = OracleDialect()
+
     def execute_sql(self, sql, params=None):
         cursor = self._cursor
         params = params or {}
@@ -113,14 +115,14 @@ class OracleContext(DbContext):
         row = Row(table, data)
         fields = ','.join([field.name for field in row.values.keys()])
         values = ','.join([':{0}'.format(field.name) for field in row.values.keys()])
-        data = {field.name : value for field, value in row.values.items()}
+        data = {field.name : self._dialect.format_value_string(field, value) for field, value in row.values.items()}
         sql = 'insert into ' + table.tablename + ' (' + fields + ') values (' + values + ')'
         return self.execute_sql(sql, data)
-    
+
     def save(self, tablename, data):
         self._save_or_update(tablename, data)
         self._context.commit()
-    
+
     def load_table_metadata(self, tablename, auto_fill=False, key_type=KEY_TYPE_PRIMARY):
         tablename = tablename.upper()
         if key_type == KEY_TYPE_PRIMARY:
@@ -208,7 +210,7 @@ class OracleContext(DbContext):
             return DatetimeField(field_name, is_key=is_key)
         else:
             raise Exception('Unsupportted type ' + field_datatype)
-                
+
     def set_metadata(self, tablename, fields):
         field_dict = {}
         for field in fields:
@@ -232,7 +234,7 @@ class OracleContext(DbContext):
         else:
             raise TableKeyNotSpecified()
         self._save(tablename, data)
-        
+
     def save_or_update(self, tablename, data):
         self._save_or_update(tablename, data)
         self._context.commit()
@@ -248,7 +250,7 @@ class OracleContext(DbContext):
         colnames = [i[0] for i in cursor.description]
         for row in cursor:
             yield dict(zip(colnames, row))
-    
+
     def get(self, tablename, keys):
         sql = 'select '
         table = self._meta[tablename]
@@ -259,7 +261,10 @@ class OracleContext(DbContext):
         key_condition = ' and '.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
         sql += ' where ' + key_condition
 
-        cursor = self.execute_sql(sql, keys)
+        keys = CaseInsensitiveDict(keys)
+
+        params = dict([(key.name, self._dialect.format_value_string(key, keys[key.name])) for key in key_fields])
+        cursor = self.execute_sql(sql, params)
         results = list(self._rows_as_dicts(cursor))
         if len(results) == 0:
             return None
@@ -267,7 +272,7 @@ class OracleContext(DbContext):
             return Row(table, results[0])
         else:
             raise Exception("More than one rows with the key fetched")
-    
+
     def exists_key(self, tablename, keys):
         sql = 'select count(*)'
         table = self._meta[tablename]
@@ -278,14 +283,14 @@ class OracleContext(DbContext):
         sql += ' where ' + key_condition
 
         keys = CaseInsensitiveDict(keys)
-        
-        params = dict([(key.name, keys[key.name]) for key in key_fields])
+
+        params = dict([(key.name, self._dialect.format_value_string(key, keys[key.name])) for key in key_fields])
         cursor = self.execute_sql(sql, params)
         ret = cursor.fetchone()
         if ret[0] > 0:
             return True
         return False
-    
+
     def _update(self, tablename, data):
         table = self._meta[tablename]
         key_fields = [field for field in table.fields if field.is_key]
@@ -295,12 +300,30 @@ class OracleContext(DbContext):
 
         key_condition = 'and'.join([' %s = :%s ' % (key.name, key.name) for key in key_fields])
 
-        params = {field.name: value for field, value in row.values.items()}
+        params = {field.name: self._dialect.format_value_string(field, value) for field, value in row.values.items()}
         sql += " where " + key_condition
         return self.execute_sql(sql, params)
-        
+
     def commit(self):
         self._context.commit()
 
     def close(self):
         self._context.close()
+
+
+class OracleDialect(Dialect):
+    def __init__(self):
+        self._pre = re.compile('(\d{4})[-/]?(\d{2})[-/]?(\d{2})(\s*(\d{2}):?(\d{2}):?(\d{2}))?')
+
+    def format_value_string(self, field, value):
+        if isinstance(field, DatetimeField):
+            groups = self._pre.search(value).groups()
+            year = int(groups[0])
+            month = int(groups[1])
+            day = int(groups[2])
+            hour = int(groups[4]) if groups[4] else 0
+            min = int(groups[5]) if groups[5] else 0
+            sec = int(groups[6]) if groups[6] else 0
+            return datetime.datetime(year=year, month=month, day=day, hour=hour, minute=min, second=sec)
+        return value
+
